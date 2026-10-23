@@ -1,3 +1,4 @@
+import {audioClips, lines} from '../packages/editor-core/timeline-commands.ts';
 import assert from 'node:assert/strict';
 import {readFile, mkdir, writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
@@ -42,12 +43,12 @@ try {
   const session = await page.request.get('http://127.0.0.1:5173/api/session').then(r => r.json());
   const selectedId = await page.getByLabel('Open project', {exact: true}).inputValue();
   const loaded = await page.request.get(`http://127.0.0.1:5173/api/projects/${selectedId}`, {headers: {'x-local-token': session.token}}).then(r => r.json());
-  assert(loaded.project.lines.filter(line => line.startMs !== null).length >= 26);
-  assert.equal(loaded.project.lines[0].startMs, 3000);
-  assert.equal(loaded.project.lines[0].status, 'manual');
-  assert.equal(loaded.project.lines[0].style.fontSize, 64);
+  assert(lines(loaded.project).filter(line => line.startMs !== null).length >= 26);
+  assert.equal(lines(loaded.project)[0].startMs, 3000);
+  assert.equal(lines(loaded.project)[0].status, 'manual');
+  assert.equal(lines(loaded.project)[0].style.fontSize, 64);
   assert.equal(loaded.project.style.fontSize, 52);
-  const before = loaded.project.lines[0].durationMs;
+  const before = lines(loaded.project)[0].durationMs;
   const clip = page.locator('.track.lyric .timeline-clip').first();
   const bounds = await clip.boundingBox(); assert(bounds);
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -70,15 +71,15 @@ try {
   // Export a short immutable snapshot while keeping the full saved song project.
   const snapshot = structuredClone(loaded.project);
   snapshot.name = 'Editor export verification'; snapshot.durationMs = 10000;
-  snapshot.audioClips[0].durationMs = 10000;
-  snapshot.lines = snapshot.lines.filter(l => l.startMs !== null && l.startMs + l.durationMs <= 10000);
+  audioClips(snapshot)[0].durationMs = 10000;
+  snapshot.clips = snapshot.clips.filter(c => c.startMs + c.durationMs <= 10000);
   const temporary = await page.request.post('http://127.0.0.1:5173/api/projects', {headers: {'x-local-token': session.token}}).then(r => r.json());
   // Import through the API rather than forging an asset manifest.
   const imported = await page.request.post(`http://127.0.0.1:5173/api/projects/${temporary.id}/assets`, {
     headers: {'x-local-token': session.token}, multipart: {file: {name: 'test.wav', mimeType: 'audio/wav', buffer: await readFile('music/test.wav')}}
   }).then(r => r.json());
   Object.assign(snapshot, {id: temporary.id, revision: imported.project.revision, assets: imported.project.assets,
-    audioFile: imported.project.audioFile, audioClips: [{...imported.project.audioClips[0], durationMs: 10000}]});
+    clips: [...snapshot.clips.filter(c => c.kind !== 'audio'), {...audioClips(imported.project)[0], trackId: snapshot.tracks.find(t => t.kind === 'audio').id, durationMs: 10000}]});
   const saved = await page.request.put(`http://127.0.0.1:5173/api/projects/${temporary.id}`, {headers: {'x-local-token': session.token}, data: snapshot});
   assert.equal(saved.status(), 200, await saved.text());
   await page.reload();

@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {newProject, parseProject, lyricLines, clipSchema} from '../packages/project-model/model';
 import {changeProject, moveLine, splitLine, timeLine, mergeAlignment, splitMedia} from '../packages/editor-core/commands';
 import {api, useEditor} from '../apps/web/store';
+import {visualClips} from '../packages/editor-core/timeline-commands';
 
 function fixture() {
   const project = newProject(randomUUID());
@@ -107,9 +108,9 @@ describe('Editor invariants and history', () => {
     expect(split.backgrounds.filter(c => c.layer === 2)).toHaveLength(2);
     expect(split.backgrounds.every(c => c.opacity === .5)).toBe(true);
     const store = useEditor.getState(); store.open(p);
-    store.edit(d => {d.backgrounds[0].layer = 3; d.backgrounds[0].startMs = 2000;});
-    store.undo(); expect(useEditor.getState().project?.backgrounds[0].layer).toBe(2);
-    store.redo(); expect(useEditor.getState().project?.backgrounds.find(c => c.layer === 3)?.startMs).toBe(2000);
+    store.edit(d => {visualClips(d)[0].trackId = 'track:visual:1'; visualClips(d)[0].startMs = 2000;});
+    store.undo(); expect(visualClips(useEditor.getState().project!)[0].trackId).toBe('track:visual:2');
+    store.redo(); expect(visualClips(useEditor.getState().project!)[0].startMs).toBe(2000);
     expect(() => changeProject(p, d => {d.backgrounds[0].opacity = 1.01;})).toThrow();
     expect(() => changeProject(p, d => {d.backgrounds[0].layer = -.5;})).toThrow();
   });

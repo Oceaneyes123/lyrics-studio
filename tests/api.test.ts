@@ -1,14 +1,26 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import * as filesystem from 'node:fs/promises';
-import {mkdtemp, rm, writeFile, readFile, unlink} from 'node:fs/promises';
+import {mkdtemp, rm, writeFile, readFile, unlink, readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createApp, runPython} from '../apps/api/app';
-import type {Project} from '../packages/project-model/model';
+import type {TimelineProject as Project} from '../packages/project-model/timeline';
+import {audioClips, setLyrics, updateLine} from '../packages/editor-core/timeline-commands';
+import {bundle} from '@remotion/bundler';
+import {renderMedia, selectComposition} from '@remotion/renderer';
+
+vi.mock('@remotion/bundler', async importOriginal => {
+  const actual = await importOriginal<typeof import('@remotion/bundler')>();
+  return {...actual, bundle: vi.fn(actual.bundle)};
+});
+vi.mock('@remotion/renderer', async importOriginal => {
+  const actual = await importOriginal<typeof import('@remotion/renderer')>();
+  return {...actual, renderMedia: vi.fn(actual.renderMedia), selectComposition: vi.fn(actual.selectComposition)};
+});
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return {...actual, writeFile: vi.fn(actual.writeFile)};
+  return {...actual, writeFile: vi.fn(actual.writeFile), rename: vi.fn(actual.rename)};
 });
 
 function wav() {
@@ -40,29 +52,59 @@ describe('Local API, persistence, and media trust boundary', () => {
     expect(loaded.project.name).toBe('Saved song'); expect(loaded.project.revision).toBe(1);
   });
   it('recovers a corrupt main document from the last-good backup', async () => {
-    const p = await create(); p.name = 'New name'; await instance.store.save(p);
+    const p = await create(); p.name = 'New name'; await instance.store.saveTimeline(p);
     await writeFile(path.join(root, p.id, 'project.json'), 'invalid json');
-    const recovered = await instance.store.load(p.id); expect(recovered.recovered).toBe(true); expect(recovered.project.name).toBe('Untitled lyric video');
-    await instance.store.save(recovered.project); expect((await instance.store.load(p.id)).recovered).toBe(false);
+    const recovered = await instance.store.loadTimeline(p.id); expect(recovered.recovered).toBe(true); expect(recovered.project.name).toBe('Untitled lyric video');
+    await instance.store.saveTimeline(recovered.project); expect((await instance.store.loadTimeline(p.id)).recovered).toBe(false);
   });
   it('preserves the last valid document if the replacement write fails', async () => {
     const p = await create();
     const original = await readFile(path.join(root, p.id, 'project.json'), 'utf8');
     const failure = vi.mocked(filesystem.writeFile), originalWrite = failure.getMockImplementation()!;
     failure.mockRejectedValueOnce(Object.assign(new Error('No space left'), {code: 'ENOSPC'}));
-    try {await expect(instance.store.save({...p, name: 'Must not replace'})).rejects.toThrow('No space');}
+    try {await expect(instance.store.saveTimeline({...p, name: 'Must not replace'})).rejects.toThrow('No space');}
     finally {failure.mockReset().mockImplementation(originalWrite);}
     expect(await readFile(path.join(root, p.id, 'project.json'), 'utf8')).toBe(original);
-    expect((await instance.store.load(p.id)).project.name).toBe(p.name);
+    expect((await instance.store.loadTimeline(p.id)).project.name).toBe(p.name);
   });
   it('never recovers an unsupported future schema into an older document', async () => {
-    const p = await create(); await instance.store.save(p);
+    const p = await create(); await instance.store.saveTimeline(p);
     await writeFile(path.join(root, p.id, 'project.json'), JSON.stringify({...p, schemaVersion: 99}));
-    await expect(instance.store.load(p.id)).rejects.toThrow('newer');
+    await expect(instance.store.loadTimeline(p.id)).rejects.toThrow('newer');
+  });
+  it('cleans temporary documents after a failed atomic replacement and permits retry', async () => {
+    const p = await create();
+    const rename = vi.mocked(filesystem.rename), originalRename = rename.getMockImplementation()!;
+    rename.mockImplementation(async (from, to) => {
+      if (String(to).endsWith('project.json')) throw Object.assign(new Error('No space left'), {code: 'ENOSPC'});
+      return originalRename(from, to);
+    });
+    try {await expect(instance.store.saveTimeline({...p, name: 'Failed'})).rejects.toThrow('No space');}
+    finally {rename.mockReset().mockImplementation(originalRename);}
+    expect((await readdir(path.join(root, p.id))).filter(file => file.endsWith('.tmp'))).toEqual([]);
+    expect((await instance.store.loadTimeline(p.id)).project).toEqual(p);
+    expect((await instance.store.saveTimeline({...p, name: 'Retried'})).name).toBe('Retried');
+  });
+  it('rejects corrupt media without adding assets or leaving partial uploads', async () => {
+    const p = await create();
+    for (const filename of ['broken.wav', 'broken.mp3', 'broken.mp4', 'broken.png']) {
+      expect((await upload(p, filename, Buffer.from('invalid media'))).statusCode).toBe(400);
+    }
+    expect((await instance.store.loadTimeline(p.id)).project.assets).toEqual([]);
+    expect(await readdir(path.join(root, p.id, 'assets'))).toEqual([]);
+  });
+  it('removes newly imported media if its document cannot be saved', async () => {
+    const p = await create();
+    const write = vi.mocked(filesystem.writeFile), originalWrite = write.getMockImplementation()!;
+    write.mockRejectedValueOnce(Object.assign(new Error('No space left'), {code: 'ENOSPC'}));
+    try {expect((await upload(p)).statusCode).toBe(400);}
+    finally {write.mockReset().mockImplementation(originalWrite);}
+    expect((await instance.store.loadTimeline(p.id)).project).toEqual(p);
+    expect(await readdir(path.join(root, p.id, 'assets'))).toEqual([]);
   });
   it('imports actual audio, serves byte ranges, and blocks forged contents', async () => {
     const p = await create(), response = await upload(p); expect(response.statusCode).toBe(200);
-    const result = response.json(); expect(result.project.audioClips).toHaveLength(1); expect(result.asset.durationMs).toBe(1000);
+    const result = response.json(); expect(audioClips(result.project)).toHaveLength(1); expect(result.asset.durationMs).toBe(1000);
     const route = `/api/projects/${p.id}/assets/${result.asset.id}?cap=test-token`;
     const range = await instance.app.inject({url: route, headers: {range: 'bytes=0-3'}});
     expect(range.statusCode).toBe(206); expect(range.body).toBe('RIFF');
@@ -105,16 +147,49 @@ describe('Local API, persistence, and media trust boundary', () => {
   });
   it('returns client validation errors for conflicting lyric intervals', async () => {
     const p = await create();
-    p.lines = [0, 1].map(i => ({id: String(i), text: 'Line', status: 'manual', startMs: 1000, durationMs: 1000, words: []}));
+    setLyrics(p, 'Line\nLine');
+    for (const id of ['line-1', 'line-2']) updateLine(p, id, line => {line.status = 'manual'; line.startMs = 1000; line.durationMs = 1000;});
     expect((await instance.app.inject({method: 'PUT', url: `/api/projects/${p.id}`, headers, payload: p})).statusCode).toBe(400);
   });
   it('requires lyrics/audio before alignment and explicit review acknowledgement for export', async () => {
     const p = await create();
     expect((await instance.app.inject({method: 'POST', url: `/api/projects/${p.id}/alignment-jobs`, headers, payload: {language: 'en'}})).statusCode).toBe(400);
     const imported = (await upload(p)).json().project as Project;
-    imported.lines = [{id: 'untimed', text: 'Missing', startMs: null, durationMs: null, words: [], status: 'unmatched'}];
-    const saved = await instance.store.save(imported);
+    setLyrics(imported, 'Missing');
+    const saved = await instance.store.saveTimeline(imported);
     expect((await instance.app.inject({method: 'POST', url: `/api/projects/${saved.id}/export-jobs`, headers, payload: {allowUntimed: false}})).statusCode).toBe(400);
+  });
+  it('cleans failed render output, preserves originals, gates downloads, and permits a new export', async () => {
+    const p = await create(), imported = (await upload(p)).json();
+    const originals = await readFile(await instance.store.existingFile(p.id, 'assets', imported.asset.file));
+    const render = vi.mocked(renderMedia), originalRender = render.getMockImplementation()!;
+    const bundleMock = vi.mocked(bundle), originalBundle = bundleMock.getMockImplementation()!;
+    const select = vi.mocked(selectComposition), originalSelect = select.getMockImplementation()!;
+    bundleMock.mockResolvedValue('injected-test-bundle');
+    select.mockResolvedValue({} as Awaited<ReturnType<typeof selectComposition>>);
+    try {
+      for (const message of ['Unsupported decoder', 'No space left']) {
+        render.mockImplementationOnce(async options => {
+          await writeFile(String(options.outputLocation), 'partial'); throw new Error(message);
+        });
+        const job = (await instance.app.inject({method: 'POST', url: `/api/projects/${p.id}/export-jobs`, headers, payload: {allowUntimed: false}})).json();
+        await expect.poll(() => instance.jobs.get(job.id).state).toBe('failed');
+        expect(instance.jobs.get(job.id).error).toBe(message);
+        expect((await readdir(path.join(instance.jobs.folder, job.id))).filter(file => file.endsWith('.mp4'))).toEqual([]);
+        expect((await instance.app.inject({url: `/api/jobs/${job.id}/result`, headers})).statusCode).toBe(409);
+      }
+      render.mockImplementationOnce(async options => {
+        await writeFile(String(options.outputLocation), 'injected-success');
+        return {} as Awaited<ReturnType<typeof renderMedia>>;
+      });
+      const retried = (await instance.app.inject({method: 'POST', url: `/api/projects/${p.id}/export-jobs`, headers, payload: {allowUntimed: false}})).json();
+      await expect.poll(() => instance.jobs.get(retried.id).state).toBe('succeeded');
+      expect(await readFile(await instance.store.existingFile(p.id, 'assets', imported.asset.file))).toEqual(originals);
+      expect((await instance.store.loadTimeline(p.id)).project).toEqual(imported.project);
+    } finally {
+      render.mockReset().mockImplementation(originalRender); bundleMock.mockReset().mockImplementation(originalBundle);
+      select.mockReset().mockImplementation(originalSelect);
+    }
   });
 });
 

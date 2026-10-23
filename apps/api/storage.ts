@@ -1,15 +1,18 @@
 import {randomUUID} from 'node:crypto';
-import {copyFile, mkdir, readFile, realpath, rename, readdir, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, readFile, realpath, rename, readdir, writeFile, unlink, stat} from 'node:fs/promises';
 import path from 'node:path';
-import {newProject, parseProject} from '../../packages/project-model/model';
+import {newProject} from '../../packages/project-model/model';
+import {migrateTimeline, parseTimeline} from '../../packages/project-model/timeline';
 
 export class HttpError extends Error {
   constructor(public statusCode: number, message: string) {super(message);}
 }
 export async function atomicJson(file: string, value: unknown) {
   const temporary = `${file}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(value, null, 2), 'utf8');
-  await rename(temporary, file);
+  try {
+    await writeFile(temporary, JSON.stringify(value, null, 2), 'utf8');
+    await rename(temporary, file);
+  } finally {await unlink(temporary).catch(() => {});}
 }
 export class Storage {
   private locks = new Map<string, Promise<unknown>>();
@@ -29,53 +32,64 @@ export class Storage {
     const file = await realpath(await this.location(id, ...parts)).catch(() => {throw new HttpError(404, 'Media file is missing; reimport it');});
     this.assertInside(file); return file;
   }
-  async create() {
-    const project = newProject(randomUUID());
+  async createTimeline() {
+    const project = migrateTimeline(newProject(randomUUID()));
     const folder = path.join(this.root, project.id);
     await mkdir(path.join(folder, 'assets'), {recursive: true});
     await atomicJson(path.join(folder, 'project.json'), project);
     return project;
   }
-  async load(id: string) {
+  async listTimeline() {
+    const entries = await readdir(this.root, {withFileTypes: true});
+    const result = [];
+    for (const entry of entries.filter(entry => entry.isDirectory() && !entry.isSymbolicLink())) {
+      try {const {project} = await this.loadTimeline(entry.name); result.push({id: project.id, name: project.name, revision: project.revision});}
+      catch { /* Keep corrupt projects on disk for recovery. */ }
+    }
+    return result;
+  }
+  async loadTimeline(id: string) {
     const file = await this.location(id, 'project.json');
-    try {return {project: parseProject(JSON.parse(await readFile(file, 'utf8'))), recovered: false};}
-    catch (error) {
-      // Never replace an unsupported future document with an older backup.
-      const raw = await readFile(file, 'utf8').catch(() => '');
-      try {if (JSON.parse(raw).schemaVersion > 1) throw new HttpError(409, 'Project needs a newer Lyrics Studio version');}
-      catch (versionError) {if (versionError instanceof HttpError) throw versionError;}
-      try {return {project: parseProject(JSON.parse(await readFile(`${file}.bak`, 'utf8'))), recovered: true};}
+    const raw = await readFile(file, 'utf8').catch(() => '');
+    let value: unknown;
+    try {value = JSON.parse(raw);} catch { /* Try the last-good backup below. */ }
+    if (typeof (value as {schemaVersion?: unknown})?.schemaVersion === 'number' && (value as {schemaVersion: number}).schemaVersion > 2)
+      throw new HttpError(409, 'Project needs a newer Lyrics Studio version');
+    try {return {project: migrateTimeline(value), recovered: false};}
+    catch {
+      try {return {project: migrateTimeline(JSON.parse(await readFile(`${file}.bak`, 'utf8'))), recovered: true};}
       catch {throw new HttpError(422, 'Project and backup could not be read. Keep the files and restore a backup.');}
     }
   }
-  async list() {
-    const entries = await readdir(this.root, {withFileTypes: true});
-    const projects = await Promise.all(entries.filter(e => e.isDirectory() && !e.isSymbolicLink()).map(async e => {
-      try {const {project} = await this.load(e.name); return {id: project.id, name: project.name, revision: project.revision};}
-      catch {return null;}
-    }));
-    return projects.filter(p => p !== null);
+  async saveTimeline(input: unknown, importingAssets = false) {
+    const next = parseTimeline(input);
+    return this.locked(next.id, async () => {
+      const {project: current, recovered} = await this.loadTimeline(next.id);
+      if (next.revision !== current.revision) throw new HttpError(409, 'Project changed on disk. Reopen it before saving; your edits remain in this tab.');
+      if (!importingAssets && JSON.stringify(next.assets) !== JSON.stringify(current.assets)) throw new HttpError(400, 'Assets can only be changed by media import');
+      const file = await this.location(next.id, 'project.json');
+      const source = recovered ? `${file}.bak` : file;
+      const original = JSON.parse(await readFile(source, 'utf8'));
+      if (original.schemaVersion === 1) {
+        const preserved = `${file}.v1.bak`;
+        const existing = await stat(preserved).catch(error => {if (error.code !== 'ENOENT') throw error; return null;});
+        if (!existing) await this.copyDocument(source, preserved);
+      }
+      if (!recovered) await this.copyDocument(file, `${file}.bak`);
+      next.revision++;
+      await atomicJson(file, next);
+      return next;
+    });
+  }
+  private async copyDocument(source: string, target: string) {
+    const temporary = `${target}.${randomUUID()}.tmp`;
+    try {await copyFile(source, temporary); await rename(temporary, target);}
+    finally {await unlink(temporary).catch(() => {});}
   }
   async locked<T>(id: string, action: () => Promise<T>): Promise<T> {
     const previous = this.locks.get(id) ?? Promise.resolve();
     const current = previous.catch(() => {}).then(action);
     this.locks.set(id, current);
     try {return await current;} finally {if (this.locks.get(id) === current) this.locks.delete(id);}
-  }
-  async save(input: unknown) {
-    const next = parseProject(input);
-    return this.locked(next.id, async () => {
-      const {project: current, recovered} = await this.load(next.id);
-      if (next.revision !== current.revision) throw new HttpError(409, 'Project changed on disk. Reopen it before saving; your edits remain in this tab.');
-      if (JSON.stringify(next.assets) !== JSON.stringify(current.assets)) throw new HttpError(400, 'Assets can only be changed by media import');
-      const file = await this.location(next.id, 'project.json');
-      if (!recovered) {
-        const temporary = `${file}.bak.${randomUUID()}.tmp`;
-        await copyFile(file, temporary); await rename(temporary, `${file}.bak`);
-      }
-      next.revision++;
-      await atomicJson(file, next);
-      return next;
-    });
   }
 }

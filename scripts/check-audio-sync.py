@@ -8,16 +8,18 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("original")
 parser.add_argument("export")
 parser.add_argument("--fps", type=int, choices=[24, 25, 30], default=30)
+parser.add_argument("--points", type=float, nargs='+', default=[5, 45, 80], help="Non-silent measurement positions in seconds")
 args = parser.parse_args()
 rate = 8000
 reference = decode_audio(args.original, sampling_rate=rate)
 output = decode_audio(args.export, sampling_rate=rate)
 measurements = []
-for second in (5, 45, 80):
-    start, margin = second * rate, 400
+for second in args.points:
+    assert second >= .05, "Measurement point must leave the 50 ms search margin"
+    start, margin = round(second * rate), 400
     expected = reference[start:start + rate]
     search = output[start - margin:start + rate + margin]
-    assert len(expected) == rate and len(search) == rate + margin * 2, "Use a full-length fixture longer than 81 seconds"
+    assert len(expected) == rate and len(search) == rate + margin * 2, "Measurement window exceeds source/export duration"
     assert np.linalg.norm(expected) > .001, "Reference window is silent; choose a different measurement point"
     correlations = np.correlate(search, expected, mode="valid")
     offset = int(np.argmax(correlations)) - margin

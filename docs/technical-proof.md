@@ -2,6 +2,10 @@
 
 Date: 2026-10-22. Status: **in progress; M1 gate has not passed**.
 
+Scope update (2026-10-23): this is a historical execution record. The user removed the remaining M0.2/M0.3/M0.5 tasks from the MVP checklist; all 32 retained work packages are complete. Unperformed accuracy/listening measurements remain unverified, not outstanding MVP tasks or passed checks.
+
+Follow-up (2026-10-23): the user authorized M1–M5 implementation despite this historical M0 gate. Core editor features are now delivered. Current small-model stress tests, blind review templates, font/layout parity, failure tests, and workload measurements are tracked in [acceptance-review.md](acceptance-review.md). The base.en results below remain historical evidence; manual singing-accuracy and listening approval are still pending.
+
 ## Scope and decision
 
 Implemented a minimal local alignment adapter, shared Remotion Player/Renderer composition, reproducible fixtures, and runnable verification. No editor/API foundation has been built yet. M0 proves that the chosen stack can run here; it does not yet prove acceptable alignment quality across the required song corpus.
@@ -99,16 +103,6 @@ Existing checks cover model/time invariants, alignment mapping, exact supplied t
 
 Latest check results: TypeScript typecheck passed; 15 Vitest tests and 15 Python tests passed. The earlier environment pip check passed. The original brief was preserved. The hymn export was directly probed: 600 video frames / 20 seconds, AAC stereo 48 kHz, and container duration 20.011 seconds including audio padding.
 
-Remaining M0 evidence:
-
-- [x] Add a user-supplied repeated-chorus fixture.
-- [ ] Add representative long-gap and fast-vocal fixtures.
-- [ ] Manually annotate representative line/word boundaries and record fixture hashes.
-- [ ] Measure actual median/p95 boundary errors and match coverage against annotations.
-- [ ] Review correction burden and settle the word-quality target.
-- [x] Record actual worker peak memory on fresh ASR with already-downloaded weights.
-- [ ] Distinguish isolated model setup from steady-state processing.
-- [ ] Listen to exported song audio and record synchronization/quality observations.
-- [ ] Make an evidence-based go/no-go decision; only then begin M1.
+Historical evidence limits: independent annotation, boundary accuracy, correction burden, and listening approval were not established. These tasks were removed from active MVP scope at the user's request. Later stress fixtures, stage timings, and export checks are recorded in acceptance-review.md.
 
 Remotion is used for evaluation under its [official license](https://www.remotion.dev/docs/license). Future commercial eligibility has not been assumed; no license was bought or free-license eligibility declared.

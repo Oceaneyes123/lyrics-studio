@@ -1,9 +1,11 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Player, type PlayerRef} from '@remotion/player';
-import {ProofVideo} from '../../packages/video-composition/ProofVideo';
-import {clipSchema, lyricLines, type Asset, type Project} from '../../packages/project-model/model';
+import {TimelineVideo as ProofVideo} from '../../packages/video-composition/TimelineVideo';
+import type {Asset} from '../../packages/project-model/model';
+import {timelineClipSchema as clipSchema, trackSchema, type TimelineProject as Project} from '../../packages/project-model/timeline';
 import {durationFrames} from '../../packages/project-model/proof';
-import {mergeAlignment, moveLine, splitLine, splitMedia, timeLine} from '../../packages/editor-core/commands';
+import {timeLine, moveLine} from '../../packages/editor-core/commands';
+import {applyAlignment as mergeAlignment, audioClips, lines, visualClips, updateLine, setLyrics as replaceLyricText, splitClip, deleteClips, selectedClips, moveClips, type Line} from '../../packages/editor-core/timeline-commands';
 import type {Job} from '../api/jobs';
 import {api, sessionToken, useEditor, type Selection} from './store';
 import {Timeline} from './Timeline';
@@ -30,7 +32,8 @@ export function App() {
   });
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false), [saveState, setSaveState] = useState('Saved');
-  const [selection, setSelection] = useState<Selection>(null), [frame, setFrame] = useState(0);
+  const [selection, setPrimarySelection] = useState<Selection>(null), [frame, setFrame] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lyrics, setLyrics] = useState(''), [language, setLanguage] = useState('en');
   const [job, setJob] = useState<Job | null>(null), [lastExport, setLastExport] = useState('');
   const [exportOpen, setExportOpen] = useState(false), [allowUntimed, setAllowUntimed] = useState(false);
@@ -39,6 +42,19 @@ export function App() {
   const activeJob = job?.state === 'running' || job?.state === 'queued';
   const recentProjects = projects.filter(p => !hiddenRecents.includes(p.id));
   const attempt = useCallback((action: () => void) => {try {action(); setError('');} catch (e) {setError(e instanceof Error ? e.message : 'Edit failed');}}, []);
+  function setSelection(next: Selection, mode: 'single' | 'toggle' | 'range' = 'single') {
+    setPrimarySelection(next);
+    if (!project || !next) {setSelectedIds([]); return;}
+    const clip = project.clips.find(c => next.kind === 'lyric' ? c.kind === 'lyric' && c.sourceLineId === next.id : c.id === next.id);
+    if (!clip) {setSelectedIds([]); return;}
+    let ids = [clip.id];
+    if (mode === 'toggle') ids = selectedIds.includes(clip.id) ? selectedIds.filter(id => id !== clip.id) : [...selectedIds, clip.id];
+    if (mode === 'range' && selectedIds.length) {
+      const anchor = project.clips.find(c => c.id === selectedIds[0]);
+      if (anchor?.trackId === clip.trackId) ids = project.clips.filter(c => c.trackId === clip.trackId && c.startMs >= Math.min(anchor.startMs, clip.startMs) && c.startMs <= Math.max(anchor.startMs, clip.startMs)).map(c => c.id);
+    }
+    setSelectedIds(selectedClips(project, ids).map(c => c.id));
+  }
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError(''); try {await action();} catch (e) {setError(e instanceof Error ? e.message : 'Operation failed');} finally {setBusy(false);}
   }
@@ -46,7 +62,7 @@ export function App() {
   useEffect(() => {
     sessionToken().then(refresh).catch(e => setError(String(e.message)));
   }, []);
-  useEffect(() => {setLyrics(project?.sourceLyrics ?? '');}, [project?.id, project?.sourceLyrics]);
+  useEffect(() => {setLyrics(project?.lyricSource.text ?? '');}, [project?.id, project?.lyricSource.text]);
   const save = useCallback(async (): Promise<Project> => {
     if (saving.current) return saving.current;
     const state = useEditor.getState(); if (!state.project) throw new Error('Create a project first');
@@ -64,9 +80,9 @@ export function App() {
     return () => clearTimeout(timeout);
   }, [version, dirty, importing, save]);
   useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => {if (project && (useEditor.getState().dirty || lyrics !== project.sourceLyrics)) {event.preventDefault(); event.returnValue = '';}};
+    const warn = (event: BeforeUnloadEvent) => {if (project && (useEditor.getState().dirty || lyrics !== project.lyricSource.text)) {event.preventDefault(); event.returnValue = '';}};
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
-  }, [lyrics, project?.sourceLyrics]);
+  }, [lyrics, project?.lyricSource.text]);
   useEffect(() => {
     const instance = player.current; if (!instance) return;
     const update = ({detail}: {detail: {frame: number}}) => setFrame(detail.frame);
@@ -101,7 +117,7 @@ export function App() {
     player.current?.pause(); player.current?.seekTo(next); setFrame(next);
   };
   async function open(id: string) {
-    if (project && (useEditor.getState().dirty || lyrics !== project.sourceLyrics) && !confirm('Discard unsaved changes and reopen the selected project?')) return;
+    if (project && (useEditor.getState().dirty || lyrics !== project.lyricSource.text) && !confirm('Discard unsaved changes and reopen the selected project?')) return;
     const result = await api<{project: Project; recovered: boolean; missing: string[]}>(`/projects/${id}`);
     useEditor.getState().open(result.project); setSelection(null); setFrame(0); setJob(null); setLastExport('');
     const previousJobs = await api<Job[]>(`/projects/${id}/jobs`);
@@ -112,14 +128,14 @@ export function App() {
     if (result.recovered) useEditor.getState().edit(() => {});
   }
   async function create() {
-    if (project && (dirty || lyrics !== project.sourceLyrics) && !confirm('Discard unsaved changes and create a new project?')) return;
+    if (project && (dirty || lyrics !== project.lyricSource.text) && !confirm('Discard unsaved changes and create a new project?')) return;
     const next = await api<Project>('/projects', {method: 'POST'});
     useEditor.getState().open(next); setSelection(null); setFrame(0); setJob(null); setNotice(''); setLastExport(''); await refresh();
   }
   async function importFile(file: File, replace?: string) {
     if (!project) throw new Error('Create a project first');
     if (file.size > 500 * 1024 * 1024) throw new Error('Files must be smaller than 500 MB');
-    if (lyrics !== project.sourceLyrics && !applyLyrics()) return;
+    if (lyrics !== project.lyricSource.text && !applyLyrics()) return;
     await flush(); setImporting(true);
     try {
       const data = new FormData(); data.set('file', file);
@@ -130,9 +146,9 @@ export function App() {
   }
   function applyLyrics() {
     if (!project) return false;
-    if (lyrics === project.sourceLyrics) return true;
-    if (project.lines.some(l => l.startMs !== null) && !confirm('Replace existing lyric clips with the new text? You can undo this change.')) return false;
-    useEditor.getState().edit(draft => {draft.sourceLyrics = lyrics; draft.lines = lyricLines(lyrics);});
+    if (lyrics === project.lyricSource.text) return true;
+    if (lines(project).some(l => l.startMs !== null) && !confirm('Replace existing lyric clips with the new text? You can undo this change.')) return false;
+    useEditor.getState().edit(draft => {replaceLyricText(draft, lyrics);});
     setSelection(null); return true;
   }
   async function align() {
@@ -143,46 +159,54 @@ export function App() {
   }
   function applyAlignment(replaceManual = false) {
     if (!project || !job || job.kind !== 'alignment' || job.state !== 'succeeded') return;
-    const result = job.result as {sourceLyrics: string; audioHash: string; lines: Project['lines']};
+    const result = job.result as {sourceLyrics: string; audioHash: string; lines: Line[]};
     if (job.projectId !== project.id) throw new Error('Alignment belongs to another project');
     if (replaceManual && !confirm('Replace all timing, including manual corrections? Undo can restore the previous clips.')) return;
     const next = mergeAlignment(project, result, replaceManual);
     useEditor.getState().commit(next); setJob(null); setNotice('Alignment applied. Manual timing was preserved; review automatic matches and untimed lines.');
   }
-  function addBackground(asset: Asset, startMs = Math.round(frame * 1000 / project!.fps), layer = project!.backgrounds.length ? Math.max(...project!.backgrounds.map(c => c.layer)) + 1 : 0) {
+  function ensureVisualTrack(draft: Project, layer: number) {
+    let track = draft.tracks.filter(track => track.kind === 'visual')[layer];
+    while (!track) {
+      const created = trackSchema.parse({id: crypto.randomUUID(), name: `Layer ${draft.tracks.filter(t => t.kind === 'visual').length + 1}`, kind: 'visual'});
+      const lyricIndex = draft.tracks.findIndex(t => t.kind === 'lyrics');
+      draft.tracks.splice(lyricIndex < 0 ? draft.tracks.length : lyricIndex, 0, created);
+      track = draft.tracks.filter(t => t.kind === 'visual')[layer];
+    }
+    return track;
+  }
+  function addBackground(asset: Asset, startMs = Math.round(frame * 1000 / project!.fps), layer = project!.tracks.filter(t => t.kind === 'visual').length) {
     useEditor.getState().edit(draft => {
+      const track = ensureVisualTrack(draft, layer);
       const durationMs = Math.min(draft.durationMs - startMs, asset.kind === 'image' ? draft.durationMs : asset.durationMs);
-      const previous = draft.backgrounds.filter(c => c.layer === layer && c.startMs <= startMs).at(-1);
-      const overlap = previous ? Math.max(0, previous.startMs + previous.durationMs - startMs) : 0;
-      const clip = clipSchema.parse({id: crypto.randomUUID(), assetId: asset.id, startMs, durationMs, sourceInMs: 0, layer,
-        fadeInMs: Math.min(overlap, durationMs)});
-      draft.backgrounds.push(clip); setSelection({kind: 'video', id: clip.id});
+      const overlap = Math.min(500, durationMs);
+      const previous = visualClips(draft).filter(c => c.trackId === track.id && c.startMs <= startMs).at(-1);
+      const clip = clipSchema.parse({id: crypto.randomUUID(), assetId: asset.id, kind: 'visual', trackId: track.id, startMs, durationMs,
+        sourceInMs: 0, fadeInMs: previous && previous.startMs + previous.durationMs > startMs ? overlap : 0});
+      draft.clips.push(clip); setSelection({kind: 'video', id: clip.id});
     });
   }
   function deleteSelection() {
-    if (!selection) return;
-    useEditor.getState().edit(d => {
-      if (selection.kind === 'lyric') {
-        const line = d.lines.find(l => l.id === selection.id)!;
-        line.startMs = null; line.durationMs = null; line.words = []; line.status = 'unmatched';
-      } else if (selection.kind === 'audio') d.audioClips = d.audioClips.filter(c => c.id !== selection.id);
-      else d.backgrounds = d.backgrounds.filter(c => c.id !== selection.id);
-    }); setSelection(null);
+    if (!project || !selection) return;
+    if (selection.kind === 'lyric' && !primaryClip) {
+      useEditor.getState().edit(d => {d.lyricSource.lines = d.lyricSource.lines.filter(l => l.id !== selection.id);});
+    } else useEditor.getState().commit(deleteClips(project, selectedIds));
+    setSelection(null);
   }
   function splitSelection() {
-    if (!project || !selection) return;
-    const atMs = Math.round(frame * 1000 / project.fps);
-    if (selection.kind === 'lyric') useEditor.getState().commit(splitLine(project, selection.id, atMs, crypto.randomUUID()));
-    else useEditor.getState().commit(splitMedia(project, selection.kind, selection.id, atMs, crypto.randomUUID()));
+    if (!project || !primaryClip) return;
+    useEditor.getState().commit(splitClip(project, primaryClip.id, Math.round(frame * 1000 / project.fps)));
   }
-  const line = selection?.kind === 'lyric' ? project?.lines.find(l => l.id === selection.id) : undefined;
-  const media = selection && selection.kind !== 'lyric' ? (selection.kind === 'audio' ? project?.audioClips : project?.backgrounds)?.find(c => c.id === selection.id) : undefined;
-  const editLine = (action: (line: Project['lines'][number]) => void) => attempt(() => useEditor.getState().edit(d => action(d.lines.find(l => l.id === line!.id)!)));
-  const editMedia = (action: (clip: NonNullable<typeof media>) => void) => attempt(() => useEditor.getState().edit(d => action((selection?.kind === 'audio' ? d.audioClips : d.backgrounds).find(c => c.id === media!.id)!)));
+  const primaryClip = project && selection ? project.clips.find(c => selection.kind === 'lyric' ? c.kind === 'lyric' && c.sourceLineId === selection.id : c.id === selection.id) : undefined;
+  const line = selection?.kind === 'lyric' && project ? lines(project).find(l => l.id === selection.id) : undefined;
+  const media = primaryClip?.kind !== 'lyric' ? primaryClip : undefined;
+  const editLine = (action: (line: Line) => void) => attempt(() => useEditor.getState().edit(d => updateLine(d, line!.id, action)));
+  const editMedia = (action: (clip: NonNullable<typeof media>) => void) => attempt(() => useEditor.getState().edit(d => action(d.clips.find(c => c.id === media!.id) as NonNullable<typeof media>)));
+
   const activeStyle = styleScope === 'line' && line ? line.style ?? project!.style : project?.style;
   const patchStyle = (values: Record<string, unknown>) => attempt(() => useEditor.getState().edit(d => {
     if (styleScope === 'line' && line) {
-      const selected = d.lines.find(l => l.id === line.id)!; selected.style ??= {...d.style}; Object.assign(selected.style, values);
+      updateLine(d, line.id, selected => {selected.style ??= {...d.style}; Object.assign(selected.style, values);});
     } else Object.assign(d.style, values);
   }));
   const editStyle = (key: keyof Project['style'], value: unknown) => patchStyle({[key]: value});
@@ -190,13 +214,13 @@ export function App() {
   return <div className="studio">
     <header className="app-header"><a className="brand" href="/">◒ <span>Lyrics Studio</span></a>
       {project && <input className="project-name" aria-label="Project name" value={project.name} onChange={e => attempt(() => useEditor.getState().edit(d => {d.name = e.target.value;}))} />}
-      <span className="save-state" role="status">{project && lyrics !== project.sourceLyrics ? 'Unsaved lyrics' : dirty && saveState === 'Saved' ? 'Unsaved changes' : saveState}</span>
+      <span className="save-state" role="status">{project && lyrics !== project.lyricSource.text ? 'Unsaved lyrics' : dirty && saveState === 'Saved' ? 'Unsaved changes' : saveState}</span>
       <div className="header-actions"><select aria-label="Open project" disabled={busy} value={project?.id ?? ''} onChange={e => e.target.value && void perform(() => open(e.target.value))}>
         <option value="" disabled>Open project</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <button onClick={() => void perform(create)} disabled={busy}>New project</button>
-        <button disabled={!project || busy} onClick={() => void perform(async () => {if (project && lyrics !== project.sourceLyrics && !applyLyrics()) return; await flush(); await refresh();})}>Save</button>
-        <button className="primary" disabled={!project?.audioClips.length || busy || activeJob} onClick={() => attempt(() => {
-          if (project && lyrics !== project.sourceLyrics && !applyLyrics()) return;
+        <button disabled={!project || busy} onClick={() => void perform(async () => {if (project && lyrics !== project.lyricSource.text && !applyLyrics()) return; await flush(); await refresh();})}>Save</button>
+        <button className="primary" disabled={!(project ? audioClips(project).length : 0) || busy || activeJob} onClick={() => attempt(() => {
+          if (project && lyrics !== project.lyricSource.text && !applyLyrics()) return;
           setExportOpen(true); setAllowUntimed(false);
         })}>Export MP4</button></div>
     </header>
@@ -225,9 +249,9 @@ export function App() {
             <span className={`asset-icon ${asset.kind}`}>{asset.kind === 'audio' ? '♫' : asset.kind === 'video' ? '▷' : '▧'}</span>
             <div><strong title={asset.name}>{asset.name}</strong><small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ''}</small></div>
             {asset.kind !== 'audio' ? <button aria-label={`Add background ${asset.name}`} onClick={() => attempt(() => addBackground(asset))}>＋</button> :
-              !project.audioClips.length && <button aria-label={`Use audio ${asset.name}`} onClick={() => attempt(() => useEditor.getState().edit(d => {
-                d.audioFile = asset.file; d.durationMs = Math.max(d.durationMs, asset.durationMs);
-                d.audioClips.push(clipSchema.parse({id: crypto.randomUUID(), assetId: asset.id, startMs: 0, durationMs: asset.durationMs, sourceInMs: 0}));
+              !audioClips(project).length && <button aria-label={`Use audio ${asset.name}`} onClick={() => attempt(() => useEditor.getState().edit(d => {
+                d.durationMs = Math.max(d.durationMs, asset.durationMs);
+                d.clips.push(clipSchema.parse({id: crypto.randomUUID(), assetId: asset.id, kind: 'audio', trackId: d.tracks.find(t => t.kind === 'audio')!.id, startMs: 0, durationMs: asset.durationMs, sourceInMs: 0}));
               }))}>＋</button>}
             <label className="repair-media" title="Restore a missing file using the identical original">Repair<input aria-label={`Repair ${asset.name}`} type="file" accept=".wav,.mp3,.mp4,.jpg,.jpeg,.png,.gif" disabled={busy} onChange={e => {
               const file = e.target.files?.[0]; e.target.value = ''; if (file) void perform(() => importFile(file, asset.id));
@@ -238,7 +262,7 @@ export function App() {
           <div className="inline"><select aria-label="Lyrics language" value={language} onChange={e => setLanguage(e.target.value)}>
             <option value="en">English</option><option value="tl">Filipino</option><option value="es">Spanish</option><option value="ja">Japanese</option></select>
             <button onClick={() => attempt(() => {applyLyrics();})}>Use lyrics</button></div>
-          <button className="primary full" disabled={busy || activeJob || !project.audioClips.length || !lyrics.trim()} onClick={() => void perform(align)}>Align to song</button>
+          <button className="primary full" disabled={busy || activeJob || !audioClips(project).length || !lyrics.trim()} onClick={() => void perform(align)}>Align to song</button>
           <small className="helper">Automatic timing needs review. First use may download model weights (about 150 MB).</small>
         </section></aside>
         <section className="preview-panel"><div className="preview-heading"><h2>Preview</h2><span>{project.width} × {project.height} / {project.fps} fps</span></div>
@@ -249,10 +273,10 @@ export function App() {
             <button onClick={() => player.current?.toggle()}>Play / pause</button><button aria-label="Next frame" onClick={() => seek((frame + 1) * 1000 / project.fps)}>›</button>
             <output>{(frame / project.fps).toFixed(3)}s <span>/ {(project.durationMs / 1000).toFixed(3)}s</span></output>
             <button disabled={!past.length} onClick={() => useEditor.getState().undo()}>Undo</button><button disabled={!future.length} onClick={() => useEditor.getState().redo()}>Redo</button></div>
-          <div className="lyric-review"><div className="review-heading"><h2>Lyric clips</h2><span>{project.lines.filter(l => l.startMs !== null).length}/{project.lines.length} timed</span>
-            <button onClick={() => attempt(() => useEditor.getState().edit(d => {const id = crypto.randomUUID(); d.lines.push({id, text: 'New lyric', startMs: null, durationMs: null, status: 'unmatched', words: []}); setSelection({kind: 'lyric', id});}))}>＋ Add line</button></div>
-            {!project.lines.length && <p className="empty-hint">Paste lyrics to create your first line.</p>}
-            {project.lines.map((l, index) => <button key={l.id} className={`lyric-row ${selection?.id === l.id ? 'selected' : ''}`} onClick={() => {setSelection({kind: 'lyric', id: l.id}); if (l.startMs !== null) seek(l.startMs);}}>
+          <div className="lyric-review"><div className="review-heading"><h2>Lyric clips</h2><span>{lines(project).filter(l => l.startMs !== null).length}/{lines(project).length} timed</span>
+            <button onClick={() => attempt(() => useEditor.getState().edit(d => {const id = crypto.randomUUID(); d.lyricSource.lines.push({id, text: 'New lyric'}); setSelection({kind: 'lyric', id});}))}>＋ Add line</button></div>
+            {!lines(project).length && <p className="empty-hint">Paste lyrics to create your first line.</p>}
+            {lines(project).map((l, index) => <button key={l.id} className={`lyric-row ${selection?.id === l.id ? 'selected' : ''}`} onClick={() => {setSelection({kind: 'lyric', id: l.id}); if (l.startMs !== null) seek(l.startMs);}}>
               <span className="line-number">{index + 1}</span><span className={`timing-status ${l.status}`}>{l.startMs === null ? 'Untimed' : `${(l.startMs / 1000).toFixed(2)}s`}</span>
               <span className="line-text">{l.text}</span><small>{l.status === 'manual' ? 'Edited' : l.status === 'review' ? 'Review' : 'Place manually'}</small>
             </button>)}
@@ -266,7 +290,7 @@ export function App() {
             {line.reason && <p className="helper" role="status">{line.reason}</p>}
             {line.startMs === null ? <button className="primary full" onClick={() => editLine(l => {
               const start = Math.round(frame * 1000 / project.fps);
-              const next = project.lines.filter(other => other.startMs !== null && other.startMs > start).reduce((end, other) => Math.min(end, other.startMs!), project.durationMs);
+              const next = lines(project).filter(other => other.startMs !== null && other.startMs > start).reduce((end, other) => Math.min(end, other.startMs!), project.durationMs);
               timeLine(l, start, Math.min(start + 2000, next));
             })}>Place at playhead</button> : <div className="field-grid">
               <NumberField label="Line start (s)" value={line.startMs / 1000} change={n => editLine(l => {moveLine(l, Math.round(n * 1000)); l.status = 'manual';})} />
@@ -285,7 +309,7 @@ export function App() {
               <NumberField label="Clip duration (s)" value={media.durationMs / 1000} change={n => editMedia(c => {c.durationMs = Math.round(n * 1000);})} />
               <NumberField label="Source trim (s)" value={media.sourceInMs / 1000} change={n => editMedia(c => {c.sourceInMs = Math.round(n * 1000);})} /></div>
             {selection?.kind === 'video' && <><label>Fit<select value={media.fit} onChange={e => editMedia(c => {c.fit = e.target.value as 'cover' | 'contain';})}><option value="cover">Crop to fill</option><option value="contain">Fit inside</option></select></label>
-              <div className="field-grid"><NumberField label="Layer" value={media.layer + 1} min={1} max={500} step={1} change={n => editMedia(c => {c.layer = n - 1;})} />
+              <div className="field-grid"><NumberField label="Layer" value={project.tracks.filter(t => t.kind === 'visual').findIndex(t => t.id === media.trackId) + 1} min={1} max={500} step={1} change={n => attempt(() => useEditor.getState().edit(d => {d.clips.find(c => c.id === media.id)!.trackId = ensureVisualTrack(d, n - 1).id;}))} />
                 <NumberField label="Opacity (%)" value={media.opacity * 100} min={0} max={100} step={1} change={n => editMedia(c => {c.opacity = n / 100;})} />
                 <NumberField label="Scale" value={media.scale} change={n => editMedia(c => {c.scale = n;})} />
                 <NumberField label="Horizontal offset (%)" value={media.x} change={n => editMedia(c => {c.x = n;})} />
@@ -302,7 +326,11 @@ export function App() {
           </>}
           {selection && <div className="inline"><button onClick={() => attempt(splitSelection)}>Split at playhead</button><button onClick={() => attempt(deleteSelection)}>Delete clip</button>
             <button onClick={() => setSelection(null)}>Project</button></div>}
-        </section><section><h2>Lyric style</h2><label>Apply to<select aria-label="Style scope" value={styleScope === 'line' && line ? 'line' : 'project'} onChange={e => setStyleScope(e.target.value as 'line' | 'project')}>
+        </section>{selectedIds.length > 1 && <section><h2>{selectedIds.length} selected clips</h2>
+          <NumberField label="Move selection by (s)" value={0} change={n => attempt(() => useEditor.getState().commit(moveClips(project, selectedIds, Math.round(n * 1000))))} />
+          {selectedClips(project, selectedIds).every(c => c.kind === 'visual') && <NumberField label="Selection opacity (%)" value={media?.opacity ? media.opacity * 100 : 100} min={0} max={100} step={1}
+            change={n => attempt(() => useEditor.getState().edit(d => {for (const c of d.clips) if (selectedIds.includes(c.id) && c.kind === 'visual') c.opacity = n / 100;}))} />}
+        </section>}<section><h2>Lyric style</h2><label>Apply to<select aria-label="Style scope" value={styleScope === 'line' && line ? 'line' : 'project'} onChange={e => setStyleScope(e.target.value as 'line' | 'project')}>
           <option value="project">All lines without overrides</option><option value="line" disabled={!line}>Selected lyric line</option></select></label>
           {line?.style && <button onClick={() => editLine(l => {delete l.style;})}>Use project style</button>}
           <div className="inline"><button onClick={() => patchStyle({y: 50, fontSize: 64, karaoke: 'none', outline: 0})}>Centered title</button>
@@ -320,7 +348,7 @@ export function App() {
           <label className="checkbox"><input type="checkbox" checked={activeStyle!.shadow} onChange={e => editStyle('shadow', e.target.checked)} /> Text shadow</label>
         </section></aside>
       </main>
-      <Timeline project={project} frame={frame} selection={selection} select={setSelection} seek={seek} attempt={attempt}
+      <Timeline project={project} frame={frame} selection={selection} selectedIds={selectedIds} select={setSelection} setSelectedIds={setSelectedIds} seek={seek} attempt={attempt}
         addBackground={addBackground}
         audioUrl={project.assets.find(a => a.kind === 'audio') ? assetUrls[project.assets.find(a => a.kind === 'audio')!.file] : undefined} />
     </>}
@@ -336,10 +364,10 @@ export function App() {
     {exportOpen && project && <dialog ref={node => {if (node && !node.open) node.showModal();}} onCancel={() => setExportOpen(false)} className="export-dialog" aria-labelledby="export-title"><h2 id="export-title">Export your lyric video</h2>
       <p>{project.width} × {project.height} · {project.fps} fps · {(project.durationMs / 1000).toFixed(1)} seconds</p>
       <p>Export uses the saved project snapshot. You can keep editing while it renders.</p>
-      {project.lines.some(l => l.status !== 'manual') && <label className="checkbox"><input aria-label="Export with unreviewed lyrics" type="checkbox" checked={allowUntimed} onChange={e => setAllowUntimed(e.target.checked)} />
-        Export unreviewed timing and omit untimed lyrics ({project.lines.filter(l => l.startMs === null).length} untimed)</label>}
+      {lines(project).some(l => l.status !== 'manual') && <label className="checkbox"><input aria-label="Export with unreviewed lyrics" type="checkbox" checked={allowUntimed} onChange={e => setAllowUntimed(e.target.checked)} />
+        Export unreviewed timing and omit untimed lyrics ({lines(project).filter(l => l.startMs === null).length} untimed)</label>}
       <div className="inline"><button onClick={() => setExportOpen(false)}>Cancel</button><button className="primary"
-        disabled={busy || (!allowUntimed && project.lines.some(l => l.status !== 'manual'))} onClick={() => void perform(async () => {
+        disabled={busy || (!allowUntimed && lines(project).some(l => l.status !== 'manual'))} onClick={() => void perform(async () => {
           await flush(); const current = useEditor.getState().project!;
           setJob(await api<Job>(`/projects/${current.id}/export-jobs`, {method: 'POST', body: JSON.stringify({allowUntimed})})); setExportOpen(false);
         })}>Start export</button></div>

@@ -1,0 +1,37 @@
+[
+  {
+    "schemaVersion": 1, "id": "00000000-0000-4000-8000-000000000001", "name": "Empty V1", "revision": 0,
+    "fps": 30, "width": 1280, "height": 720, "durationMs": 30000, "audioFile": "", "sourceLyrics": "",
+    "assets": [], "audioClips": [], "backgrounds": [], "lines": [], "style": {}
+  },
+  {
+    "schemaVersion": 1, "id": "00000000-0000-4000-8000-000000000002", "name": "Repeated and untimed V1", "revision": 3,
+    "fps": 25, "width": 720, "height": 1280, "durationMs": 30000, "audioFile": "", "sourceLyrics": "[Chorus]\nSing again\n\nSing again\nUnmatched café 🌟",
+    "assets": [], "audioClips": [], "backgrounds": [], "style": {},
+    "lines": [
+      {"id": "line-2", "text": "Sing again", "startMs": 1000, "durationMs": 2000, "status": "review", "words": []},
+      {"id": "line-4", "text": "Sing again", "startMs": 6000, "durationMs": 2000, "status": "manual", "words": []},
+      {"id": "line-5", "text": "Unmatched café 🌟", "startMs": null, "durationMs": null, "status": "unmatched", "words": [], "reason": "No match", "style": {"fontSize": 64}}
+    ]
+  },
+  {
+    "schemaVersion": 1, "id": "00000000-0000-4000-8000-000000000003", "name": "Layered and corrected V1", "revision": 8,
+    "fps": 30, "width": 1280, "height": 720, "durationMs": 30000,
+    "audioFile": "00000000-0000-4000-8000-000000000011.wav", "sourceLyrics": "Sing again",
+    "style": {"font": "Georgia", "y": 68},
+    "assets": [
+      {"id": "00000000-0000-4000-8000-000000000011", "name": "song.wav", "file": "00000000-0000-4000-8000-000000000011.wav", "kind": "audio", "durationMs": 30000, "width": 0, "height": 0, "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      {"id": "00000000-0000-4000-8000-000000000012", "name": "animated.gif", "file": "00000000-0000-4000-8000-000000000012.gif", "kind": "image", "durationMs": 0, "width": 64, "height": 64, "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      {"id": "00000000-0000-4000-8000-000000000013", "name": "missing.mp4", "file": "00000000-0000-4000-8000-000000000013.mp4", "kind": "video", "durationMs": 10000, "width": 64, "height": 64, "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}
+    ],
+    "audioClips": [{"id": "00000000-0000-4000-8000-000000000021", "assetId": "00000000-0000-4000-8000-000000000011", "startMs": 1000, "durationMs": 20000, "sourceInMs": 2000}],
+    "backgrounds": [
+      {"id": "00000000-0000-4000-8000-000000000022", "assetId": "00000000-0000-4000-8000-000000000012", "startMs": 0, "durationMs": 15000, "sourceInMs": 0, "layer": 0, "opacity": 0.65},
+      {"id": "00000000-0000-4000-8000-000000000023", "assetId": "00000000-0000-4000-8000-000000000013", "startMs": 2000, "durationMs": 5000, "sourceInMs": 1000, "layer": 4, "opacity": 0.4, "fit": "contain", "scale": 0.8, "x": 10, "y": -5, "fadeInMs": 500, "fadeOutMs": 1000}
+    ],
+    "lines": [
+      {"id": "line-1", "sourceId": "line-1", "text": "Sing ", "startMs": 1000, "durationMs": 1000, "status": "manual", "words": [{"text": "Sing ", "startMs": 0, "endMs": 800}], "style": {"color": "#ff0000"}},
+      {"id": "fragment", "sourceId": "line-1", "text": "again", "startMs": 2000, "durationMs": 1000, "status": "manual", "words": [{"text": "again", "startMs": 100, "endMs": 950}]}
+    ]
+  }
+]

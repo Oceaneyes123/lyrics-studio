@@ -31,7 +31,7 @@ export const clipSchema = z.object({
   layer: z.number().int().min(0).max(499).default(0),
   opacity: z.number().min(0).max(1).default(1),
 });
-const lineSchema = z.object({
+export const lineSchema = z.object({
   id: z.string().min(1).max(120), text: z.string().min(1).max(2000),
   sourceId: z.string().max(120).optional(),
   status: z.enum(['manual', 'review', 'unmatched']), startMs: ms.nullable(), durationMs: ms.min(1).nullable(),

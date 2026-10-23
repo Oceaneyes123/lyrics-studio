@@ -172,21 +172,28 @@ def run(audio, lyrics, output, model, language, cache_dir):
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache = cache_dir / f"{key}.json"
     cache_hit = cache.exists()
+    model_setup_seconds = transcription_seconds = None
     if cache_hit:
         segments = [Segment.from_dict(s) for s in json.loads(cache.read_text(encoding="utf-8"))]
     else:
         from faster_whisper import WhisperModel
         print(f"Transcribing with {model}: CPU/int8, VAD disabled for sustained vocals", file=sys.stderr, flush=True)
+        stage = time.perf_counter()
         recognizer = WhisperModel(model, device="cpu", compute_type="int8")
+        model_setup_seconds = round(time.perf_counter() - stage, 3)
+        stage = time.perf_counter()
         recognized, _ = recognizer.transcribe(str(audio), language=language, word_timestamps=True,
                                              vad_filter=False, condition_on_previous_text=False)
         segments = [Segment(s.start, s.end, s.text,
                             [Word(w.start, w.end, w.word) for w in (s.words or [])]) for s in recognized]
+        transcription_seconds = round(time.perf_counter() - stage, 3)
         temporary = cache.with_suffix(".tmp")
         temporary.write_text(json.dumps([s.to_dict() for s in segments], ensure_ascii=False), encoding="utf-8")
         temporary.replace(cache)
     text = lyrics.read_text(encoding="utf-8-sig")
+    stage = time.perf_counter()
     lines = map_lines(text, segments, duration_ms)
+    mapping_seconds = round(time.perf_counter() - stage, 3)
     project = {"schemaVersion": 1, "id": "alignment", "fps": 30, "width": 1280, "height": 720,
                "durationMs": duration_ms, "audioFile": audio.name, "sourceLyrics": text, "lines": lines}
     metrics = {"config": config, "audioSha256": audio_hash, "cacheHit": cache_hit,
@@ -194,6 +201,8 @@ def run(audio, lyrics, output, model, language, cache_dir):
                "matchedLines": sum(l["startMs"] is not None for l in lines),
                "wordTimedLines": sum(bool(l["words"]) for l in lines),
                "elapsedSeconds": round(time.perf_counter() - started, 3),
+               "modelSetupSeconds": model_setup_seconds,
+               "transcriptionSeconds": transcription_seconds, "mappingSeconds": mapping_seconds,
                "peakWorkingSetBytes": peak_memory_bytes(),
                "accuracy": "Not measured: no independent manual annotations supplied"}
     output.parent.mkdir(parents=True, exist_ok=True)

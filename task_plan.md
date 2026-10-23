@@ -1,15 +1,21 @@
 # Task Plan: Lyrics Studio implementation
 
 ## Goal
-Implement docs/IMPLEMENTATION_PLAN.md in dependency order, starting with real alignment and rendering proof.
+Preserve the completed MVP and plan the six requested advanced editor areas in docs/ADVANCED_IMPLEMENTATION_PLAN.md, prioritizing unified timeline, audio mixing, and lyric synchronization.
 
 ## Next Step
-Core editor features and focused export/recovery checks are delivered. Remaining work: independent singing accuracy/listening review, broader Unicode/font and visual-parity cases, maximum-workload profiling, and release acceptance.
+Detailed plan: docs/ADVANCED_IMPLEMENTATION_PLAN.md. Implementation starts at A0.1 (baseline/fixtures), followed by A1.1 (pure migration and storage version dispatch). New backlog: 20 Priority 1, 13 Priority 2, 3 later tasks. No new-feature implementation started. The 32-task MVP remains complete; removed M0.2/M0.3/M0.5 are not restored.
 
 ## Current Phase
-Core editor delivered; broader M0/M4/M5 quality/release acceptance remains open. User authorization to proceed did not imply listening or accuracy approval.
+Advanced implementation authorized. A0 baseline/fixtures in progress, followed by unified-model migration (A1). Existing code edits from prior authorized work are preserved; no commits or pushes.
 
 ## Phases
+### Advanced editor: A0 baseline and fixtures
+- **Status:** in_progress
+### Advanced editor: A1–A7 implementation
+- **Status:** pending
+### Advanced editor: Detailed planning
+- **Status:** complete
 ### Phase 1: Requirements and discovery
 - **Status:** complete
 ### Phase 2: Detailed roadmap and technical contracts
@@ -17,15 +23,15 @@ Core editor delivered; broader M0/M4/M5 quality/release acceptance remains open.
 ### Phase 3: Coverage review and delivery
 - **Status:** complete
 ### M0: Technical proof
-- **Status:** in_progress
+- **Status:** complete (revised scope)
 ### M1: Editor foundation
 - **Status:** complete
 ### M2: Timeline editing
 - **Status:** complete
 ### M3: Automatic lyrics and correction
 - **Status:** complete
-### M4-M5: Core visual/export features delivered; broader acceptance
-- **Status:** in_progress
+### M4-M5: Visual/export features and bounded local acceptance
+- **Status:** complete
 
 ## Decisions Made
 - Preserve docs/PLAN.md as the original brief; create docs/IMPLEMENTATION_PLAN.md as its detailed expansion.

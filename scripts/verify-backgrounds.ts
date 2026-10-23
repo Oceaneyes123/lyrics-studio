@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {chromium, expect} from '@playwright/test';
 import {ensureBrowser} from '@remotion/renderer';
 import {createServer} from 'vite';
 import {createApp} from '../apps/api/app';
-import type {Project} from '../packages/project-model/model';
+import type {TimelineProject as Project} from '../packages/project-model/timeline';
+import {audioClips, visualClips} from '../packages/editor-core/timeline-commands';
 
 const root = await mkdtemp(path.join(tmpdir(), 'lyrics-backgrounds-'));
 const base = 'http://127.0.0.1:5174';
@@ -36,7 +37,10 @@ try {
   }
   const source = page.locator('.asset').filter({hasText: 'red.png'});
   const lane = page.locator('[data-video-layer="0"]');
+  await page.evaluate(() => {for (const name of ['dragstart', 'drop', 'dragend']) document.addEventListener(name, event => console.log('Background drag', name, (event.target as HTMLElement).className), true);});
+  page.on('console', message => {if (message.text().startsWith('Background drag')) console.log(message.text());});
   await source.dragTo(lane, {targetPosition: {x: 72, y: 20}});
+  await mkdir('artifacts/advanced', {recursive: true}); await page.screenshot({path: 'artifacts/advanced/background-drop.png', fullPage: true});
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('2');
   await expect(page.getByLabel('Clip duration (s)', {exact: true})).toHaveValue('28');
   await expect(lane.locator('.timeline-clip')).toHaveCount(1);
@@ -87,7 +91,7 @@ try {
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('0.5');
   await opacity.fill('50'); await opacity.press('Tab');
   await seek(1.7);
-  const screenshot = path.join(root, 'layers.png');
+  const screenshot = 'artifacts/advanced/layers.png';
   async function previewPixel() {
     await page.locator('[data-proof-canvas]').screenshot({path: screenshot});
     return Array.from(ffmpeg(['-i', screenshot, '-vf', 'crop=2:2:4:4', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']).subarray(0, 3));
@@ -97,7 +101,8 @@ try {
   await page.locator('[data-video-layer="2"] .timeline-clip').click();
   const layerField = page.getByLabel('Layer', {exact: true});
   await layerField.fill('1'); await layerField.press('Tab');
-  await expect.poll(async () => closeColor(await previewPixel(), [64, 128, 64])).toBe(true);
+  await expect(layerField).toHaveValue('1');
+  await expect.poll(async () => (await previewPixel()).map(value => Math.round(value / 16) * 16)).toEqual([64, 128, 64]);
   await page.getByRole('button', {name: 'Undo', exact: true}).click();
   await page.getByRole('button', {name: 'Save', exact: true}).click();
   await page.getByRole('status').filter({hasText: /^Saved$/}).waitFor();
@@ -105,8 +110,8 @@ try {
   const headers = {'x-local-token': api.token};
   const loaded = await page.request.get(`${base}/api/projects/${id}`, {headers}).then(r => r.json());
   const project = loaded.project as Project;
-  assert.equal(project.backgrounds.length, 3);
-  assert.deepEqual(project.backgrounds.map(c => c.layer), [1, 0, 2]);
+  assert.equal(visualClips(project).length, 3);
+  assert.deepEqual(visualClips(project).map(c => project.tracks.filter(t => t.kind === 'visual').findIndex(t => t.id === c.trackId)), [1, 0, 2]);
   await page.reload();
   await page.getByRole('button', {name: `${project.name} Open`, exact: true}).click();
   await expect(page.locator('.track.video .timeline-clip')).toHaveCount(3);
@@ -114,8 +119,8 @@ try {
   await expect(opacity).toHaveValue('50');
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('1.5');
   Object.assign(project, {width: 128, height: 128, durationMs: 4000});
-  for (const clip of project.backgrounds) clip.durationMs = Math.min(clip.durationMs, project.durationMs - clip.startMs);
-  project.audioClips[0].durationMs = 4000;
+  for (const clip of visualClips(project)) clip.durationMs = Math.min(clip.durationMs, project.durationMs - clip.startMs);
+  audioClips(project)[0].durationMs = 4000;
   assert.equal((await page.request.put(`${base}/api/projects/${id}`, {headers, data: project})).status(), 200);
   const response = await page.request.post(`${base}/api/projects/${id}/export-jobs`, {headers, data: {allowUntimed: false}});
   assert.equal(response.status(), 200, await response.text());

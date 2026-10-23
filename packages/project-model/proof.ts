@@ -20,7 +20,7 @@ export type ProofProject = {
 };
 
 export const msToFrame = (ms: number, fps: number) => Math.round(ms * fps / 1000);
-export const durationFrames = (project: ProofProject) => msToFrame(project.durationMs, project.fps);
+export const durationFrames = (project: {durationMs: number; fps: number}) => msToFrame(project.durationMs, project.fps);
 
 export function parseProofProject(input: unknown): ProofProject {
   const fail = (): never => {throw new Error('Invalid M0 proof project');};

@@ -1,5 +1,44 @@
 # Progress
 
+## Advanced implementation started (2026-10-23)
+- A0 baseline passed all existing unit/Python/lint/type/build and background/GIF/layer/recents/48-frame parity harnesses. Captured source/fixture hashes and the existing measured workload baseline in artifacts/advanced/baseline.json; no new maximum-workload claim.
+- A1.1 delivered strict V2 track/clip/source validation, deterministic V1 migration, version-dispatched timeline storage read/recovery, permanent byte-preserving V1 backup, stale-save/asset protection, failed-write retry, and 12 focused tests. Live V1 API/UI stays active until A1.2 adoption is complete.
+- Shared V2 commands now cover lock guards, grouped multi-selection movement, union ripple delete with conflict rejection, project-scoped clipboard, copied lyric identities, source-preserving delete, split, and snapping; eight focused command tests pass. Initial lint found an unused type and a test narrowing issue; corrected both.
+- A1.2 integration now uses canonical V2 in API project create/list/load/save/import/export, shared TimelineVideo rendering, UI store/history, App, and unified track timeline. Source untimed entries remain separate from timed clips. Updating the old tests to canonical fields fixed expected V1 API fixture failures; 70 TypeScript tests now pass. No live original media was rewritten.
+- New timeline supports track name/order/lock/mute/visibility, group-expanded multi-selection, rectangle/range/toggle selection, project-scoped clipboard, ripple delete, and keyboard alternatives. Regression harnesses are being updated to canonical model fields and rerun before closing A1.
+- Actual browser unified-timeline journey passes migration-on-open without writing, first-save permanent backup, rectangle/group selection, batch movement, locked-edit rejection, clipboard/ripple, undo/redo, visibility, and reopen. The existing background drag test found that the taller timeline placed visual drop targets below the viewport; adjusted workbench sizing. An intermediate diagnostic screenshot needed a missing mkdir import, corrected.
+- User explicitly authorized each advanced task step by step. Applying Ponytail and continuing the root planning files; no CodeGraph index exists.
+- Scope reaches model/migration, storage/version guards, commands, store/history, App/Timeline, shared rendering, API imports/alignment/exports, tests/fixtures, and scripts. Preserve existing uncommitted authorized changes.
+- Begin A0 with runnable baseline and synthetic V1 migration fixtures. No live project migration before compatibility checks.
+
+## Advanced editor plan (2026-10-23)
+- User invoked planning-with-files for six feature areas, with unified timeline, simultaneous audio, and synchronization tools marked Priority 1. Treated this as a planning request; no runtime changes made for the new features.
+- Resolved the existing root plan; no .codegraph index exists. Reviewed model/commands/history/timeline/renderer/API/storage and installed Player/Audio/interpolation type contracts. Existing edits are previous authorized work and remain preserved.
+- Created docs/ADVANCED_IMPLEMENTATION_PLAN.md: dependency order, canonical schema and versioned migration/recovery, track/group/selection/ripple/clipboard behavior, audio mixing/reference binding, per-word correction preservation, loop/speed/tapping, keyframes, imported fonts/templates, transitions/effects, later ducking/normalization, and phase-specific verification/exit gates.
+- New backlog has 36 unchecked packages: 20 Priority 1, 13 Priority 2, 3 explicitly later. The completed 32-package MVP stays unchanged; removed accuracy/listening tasks are not restored.
+- Updated task_plan.md/findings.md and linked the plan from README. Windows literal-glob rg lookup failed during a type read; switched to directory search with -g. No application tests rerun for this documentation-only task.
+- Plan self-check passed: 36 unique task IDs with the expected 20/13/3 priority split, all six requested areas present, original 32 completed MVP items retained, no removed MVP tasks restored, and edited-file whitespace clean. Clipboard is deliberately project-scoped; cross-project asset transfer is excluded from the initial scope.
+
+## MVP scope revised by user (2026-10-23)
+- User explicitly requested disregarding and removing the three remaining items. Removed M0.2/M0.3/M0.5 from the active implementation checklist, retaining IDs of delivered tasks.
+- All 32 retained MVP work packages are complete. Updated current status in task_plan.md, README, implementation/acceptance records, and editor documentation; historical measurements and known unverified limits remain intact. Removed the duplicate unchecked M0 evidence list from the historical proof record.
+- Documentation-only scope change; no runtime code, tests, commits, or pushes. Task removal is not a claim of measured accuracy or listening approval.
+
+## Acceptance follow-up (2026-10-23)
+- Continuing the seven unchecked work packages in order; preserve newer layered-background/GIF/recent-project work already committed in the workspace.
+- M0.2/M0.3: generated local long-silence and 1.25x tempo stress audio plus inaccurate text, hashed originals and derivatives, created blind annotation templates. Current small model matches original 28/28, long-gap 19/28, fast 28/28, inaccurate 28/29; these are coverage, not accuracy.
+- Added separate model setup/transcription/mapping timings. Windows peak memory is process-lifetime high-water mark; subsequent in-process cases must not be described as isolated per-case peaks.
+- Visual harness initially used a relative Webpack output path; corrected to absolute. First 48 parity cases passed; missing-font assertion incorrectly waited for visible text from an asynchronous exception, corrected to inspect actual browser errors.
+- Failed metadata-save upload returns the existing documented 400 import error, not 500; corrected test expectation. No API behavior change needed.
+- A large patch initially referenced the wrong progress heading and was rejected atomically; reapplied without that hunk. A compound read/log command was blocked by a local hook; narrower reads succeeded.
+- The missing-font test originally blocked WOFF2 only; WOFF fallback still loaded. Blocking both formats proves explicit rejection. 48 full-canvas preview/render comparisons pass. Inspected Japanese/Arabic/emoji portrait output: distinct glyphs, explicit newline, no visible replacement boxes.
+- Benchmark helper initially sent JSON content type without a POST body; corrected request headers. A visual check attempted to share port 5174 while benchmarking and correctly failed the strict-port check; run these harnesses sequentially.
+- Completed benchmarks: 10-second / 97.431-second / five-minute 720p30 exports took 15.1 / 96.5 / 253.9 seconds. Full/five-minute decoded samples at 5/45/80 and 5/150/290 seconds measured 0 ms offset, correlation >0.9999. Node peak RSS 1,016,672,256 bytes excludes browser/FFmpeg; no whole-process-tree memory claim.
+- Structural stress passed: 2,000 lyrics and 500 backgrounds in 10 layers over a one-hour timeline; validation 12.4 ms, open 1,866 ms, zoom 902 ms including browser automation. This structural fixture was not exported and does not establish smooth editing at every schema cap.
+- Final verification: 50 TypeScript/API/job tests, 24 Python tests, semantic/unused-code lint, production build, 48 Player/renderStill parity cases, explicit missing-font failure, background/GIF/layer export regression, and recent-project persistence/error regression all passed. Diff whitespace check passed. Existing non-fatal build chunk/use-client notices remain.
+- Added docs/acceptance-review.md with exact measurements, reproduction commands, independent annotation instructions, listening form, and limitations. Closed M4.3/M4.6/M5.4/M5.5; 32/35 work packages are checked. M0.2/M0.3/M0.5 remain partial until independent annotations/natural fast-vocal review and human listening are supplied.
+- Read-only post-export probe commands containing format=duration were blocked by a local hook; a direct ffprobe full-stream query succeeded and confirmed five-minute H.264/AAC output. No disk-filling experiment, original-media edits, commits, pushes, deployments, or public uploads occurred. Temporary harness servers/storage were closed/removed; local acceptance media/reports remain ignored.
+
 ## 2026-10-22
 - Read planning-with-files and Caveman instructions.
 - Resolved planning location to project root; initialized missing planning files.

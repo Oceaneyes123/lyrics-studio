@@ -5,17 +5,28 @@ import {msToFrame} from '../project-model/proof';
 import type {Project} from '../project-model/model';
 import '@fontsource/inter/600.css';
 
+export function usePinnedFont() {
+  const [fontHandle] = useState(() => delayRender('Load local Inter font'));
+  const [fontError, setFontError] = useState<Error | null>(null);
+  useEffect(() => {
+    document.fonts.load('600 52px Inter').then(fonts => {
+      if (!fonts.length) throw new Error('Bundled Inter font could not be loaded');
+      continueRender(fontHandle);
+    }).catch(error => {
+      const failure = new Error('Bundled Inter font could not be loaded', {cause: error});
+      setFontError(failure); cancelRender(failure);
+    });
+  }, [fontHandle]);
+  if (fontError) throw fontError;
+}
+
 export function ProofVideo({project, assets = {}}: {project: ProofProject | Project; assets?: Record<string, string>}) {
-  const frame = useCurrentFrame();
+  const frame = useCurrentFrame(); usePinnedFont();
   const editor = 'assets' in project ? project as Project : null;
   const source = (file: string) => assets[file] ?? staticFile(file);
   const line = lineAtFrame(project, frame);
   const style = editor ? editor.lines.find(l => l.id === line?.id)?.style ?? editor.style : undefined;
   const relativeMs = line?.startMs === null || !line ? 0 : Math.max(0, frame * 1000 / project.fps - line.startMs);
-  const [fontHandle] = useState(() => delayRender('Load local Inter font'));
-  useEffect(() => {
-    document.fonts.load('600 52px Inter').then(() => continueRender(fontHandle)).catch(cancelRender);
-  }, [fontHandle]);
   return (
     <AbsoluteFill data-proof-canvas style={{background: editor?.style.background ?? '#101820', color: style?.color ?? '#eef2f5', fontFamily: style?.font ?? 'Inter', fontWeight: 600,
       alignItems: 'center', justifyContent: 'center', fontSize: style?.fontSize ?? 52, padding: editor ? 0 : 72, textAlign: style?.align ?? 'center'}}>
@@ -43,7 +54,7 @@ export function ProofVideo({project, assets = {}}: {project: ProofProject | Proj
       })}
       <div data-proof-frame={frame} data-line-id={line?.id ?? ''} style={editor ? {
         position: 'absolute', left: `${style!.x}%`, top: `${style!.y}%`, transform: 'translate(-50%, -50%)',
-        width: '86%', textShadow: style!.shadow ? '0 3px 10px #000' : undefined,
+        width: '86%', whiteSpace: 'pre-wrap', textShadow: style!.shadow ? '0 3px 10px #000' : undefined,
         WebkitTextStroke: `${style!.outline}px #000`, paintOrder: 'stroke fill',
         opacity: line && style!.fadeMs ? Math.min(1, relativeMs / style!.fadeMs, (line.durationMs! - relativeMs) / style!.fadeMs) : 1,
       } : {maxWidth: '100%'}}>

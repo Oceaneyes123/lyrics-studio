@@ -1,5 +1,32 @@
 # Findings
 
+## Advanced implementation evidence
+- Baseline before runtime migration: 50 TypeScript tests, 24 Python tests, lint/typecheck/build pass. Existing build notices remain non-fatal.
+- Added strict V2 timeline model and deterministic pure migration separately from live V1 readers. Eight focused checks cover empty/repeated/untimed/manual-split/GIF-layer fixtures, source/media/style preservation, stable collision remapping, track-local lyric overlap, invalid references, malformed words, and future versions. Live project storage has not been rewritten.
+- Migration must retain non-UUID legacy lyric IDs and untimed style/reason metadata. Track ordering must place visual layers beneath lyrics; same-track lyric overlap remains invalid while independent lyric tracks can overlap.
+
+## Advanced editor planning (2026-10-23)
+- Created docs/ADVANCED_IMPLEMENTATION_PLAN.md with 36 new packages: A0–A3 contain 20 Priority 1 tasks, A4–A6 contain 13 Priority 2 tasks, and A7 contains 3 later audio-processing tasks. No new feature is marked implemented.
+- Core decisions: one canonical track/clip timeline with separate untimed lyric sources; deterministic versioned migration plus immutable pre-migration backup; explicit alignment reference; per-field manual correction provenance; atomic group/selection operations; track-scoped ripple rejection on ambiguous overlaps/locked members; shared frame-based curves and derived audio for later processing.
+- Existing local tools support the proposed approach. Final runtime feature behavior still requires phase-specific implementation checks; planning does not establish future performance or audio/render parity.
+- New requested scope: unified timeline architecture, simultaneous audio mixing, visual word timing, rich text/templates, frame-based keyframes, and inspector-controlled transitions/effects. First three are Priority 1; ducking/normalization are explicitly later work.
+- Current schema remains version 1 with audioClips/backgrounds/lines; numbered visual layers and opacity are already implemented. Preserve those capabilities rather than planning them as absent.
+- Existing callers span shared model/commands, Zustand history/selection, App/Timeline, API import/alignment/export, storage/recovery, shared Remotion composition, and verification scripts. Schema migration must preserve existing projects, lyric source IDs/manual timing, GIF layers, and immutable export snapshots.
+- Existing workspace edits overlap planning documents and earlier accepted code. Preserve them; this request is being handled as planning through the explicitly invoked planning-with-files skill. No .codegraph directory exists.
+- V1 validation delegates to the proof schema, which assumes schemaVersion 1 and globally nonoverlapping lyrics. V2 must validate track-local lyric overlap directly; proof fixtures need an explicit compatibility boundary rather than changing their contract.
+- Current alignment and merge code identify exactly one untrimmed audio clip and protect whole manual lyric lines/source fragments. Multiple audio requires explicit source binding; word-level overrides need stable token identities and provenance beyond the current line-level manual flag.
+- Current recovery rejects schema versions above 1; simply changing project schema without changing the storage version guard would reject migrated projects. Export snapshots and input-media immutability must survive the transition.
+- Installed Player types expose playbackRate, loop, inFrame, and outFrame. Installed Remotion exports interpolate and easing support; Audio exposes numeric/callback volume and useWebAudioApi. Reuse these installed capabilities; no library upgrade is needed just to plan these features. Actual playback/mix parity must be verified during implementation.
+- Windows rg does not expand file globs passed as literal path arguments; use directory searches with -g '*.d.ts'. This affected only a planning read, not application code.
+
+## MVP acceptance follow-up (2026-10-23)
+- Current alignment implementation differs from the older proof: production now uses small and sequence-level recognized-word matching. New acceptance evidence must use that actual configuration, not repeat the old base.en 26/28 result.
+- Real original matches 28/28 (27 word-timed); inserted 20-second silence drops coverage to 19/28. Faster-tempo derivative matches 28/28. Appended unrelated text stays untimed. Coverage remains distinct from independently measured error.
+- Shared composition collapsed explicit newlines; fixed with pre-wrap. Forty-eight actual Player/renderStill full-canvas comparisons pass across Inter/Georgia/Arial, portrait/landscape, wrap, punctuation, Japanese/Arabic/emoji, and fade/word boundary frames. Inspected portrait Unicode and wrapped-karaoke output.
+- Missing font tests must block WOFF and WOFF2; blocking WOFF2 alone leaves a functioning fallback. Add font-specific failure state for Player and fail rendering explicitly.
+- Failed atomic JSON replacement left a temporary file. The shared atomic writer now removes its own temporary file on both success/failure; injected ENOSPC/rename failures preserve originals and allow retry.
+- Performance measurements must use wall-clock start/end around actual jobs. Node RSS does not include Chromium/FFmpeg, and Python peak working set is lifetime-high-water, not isolated per-case usage.
+
 - Repository initially contains .git and docs only; no .codegraph directory.
 - docs/PLAN.md is the source brief. docs/ is already untracked; preserve its contents.
 - No existing planning files or named plans were found.

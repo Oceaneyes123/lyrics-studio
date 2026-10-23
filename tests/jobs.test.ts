@@ -3,6 +3,20 @@ import {mkdtemp, rm, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Jobs} from '../apps/api/jobs';
+it('persists a failed worker/render job and runs the next queued job', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'lyrics-failure-'));
+  const jobs = new Jobs(directory); await jobs.init();
+  try {
+    const first = await jobs.start('project', 0, 'export', async () => {throw new Error('Codec failed');});
+    const next = await jobs.start('project', 0, 'alignment', async () => ({lines: []}));
+    await expect.poll(() => jobs.get(next.id).state).toBe('succeeded');
+    await jobs.close();
+    expect(jobs.get(first.id).state).toBe('failed');
+    expect(jobs.get(next.id).state).toBe('succeeded');
+    const restarted = new Jobs(directory); await restarted.init();
+    expect(restarted.get(first.id).error).toBe('Codec failed'); await restarted.close();
+  } finally {await jobs.close(); await rm(directory, {recursive: true, force: true});}
+});
 it('serializes heavy jobs, cancels queued work, and persists completion', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'lyrics-jobs-'));
   const jobs = new Jobs(directory); await jobs.init();

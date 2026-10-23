@@ -1,3 +1,4 @@
+import {setLyrics, updateLine} from '../packages/editor-core/timeline-commands.ts';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdir, readFile, writeFile} from 'node:fs/promises';
@@ -25,10 +26,10 @@ for (const filename of ['sound.wav', 'sound.mp3', 'red.png', 'blue.jpg', 'green.
 assert.equal(project.assets.length, 5);
 const image = imported.find(a => a.name === 'red.png'), video = imported.find(a => a.name === 'green.mp4');
 const clip = (assetId, startMs, durationMs, fadeInMs = 0) => ({id: crypto.randomUUID(), assetId, startMs, durationMs, sourceInMs: 0,
-  fit: 'cover', scale: 1, x: 0, y: 0, fadeInMs, fadeOutMs: 0});
-project.backgrounds = [clip(image.id, 0, 2000), clip(video.id, 500, 1000, 500)];
+  kind: 'visual', trackId: project.tracks.find(t => t.kind === 'visual').id, fit: 'cover', scale: 1, x: 0, y: 0, fadeInMs, fadeOutMs: 0});
+project.clips.push(... [clip(image.id, 0, 2000), clip(video.id, 500, 1000, 500)]);
 project.name = 'Media preset verification';
-project.lines = [{id: 'line', text: 'Color test', status: 'manual', startMs: 0, durationMs: 2000, words: []}];
+setLyrics(project, 'Color test'); updateLine(project, 'line-1', line => {line.status = 'manual'; line.startMs = 0; line.durationMs = 2000;});
 const presets = [[1280, 720, 24], [1920, 1080, 25], [720, 1280, 30], [1080, 1920, 30]];
 async function waitJob(id) {
   for (let i = 0; i < 240; i++) {

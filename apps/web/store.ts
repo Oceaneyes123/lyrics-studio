@@ -1,14 +1,14 @@
 import {create} from 'zustand';
-import {changeProject} from '../../packages/editor-core/commands';
-import {parseProject, type Project} from '../../packages/project-model/model';
+import {changeTimeline as changeProject} from '../../packages/editor-core/timeline-commands';
+import {migrateTimeline as parseProject, type TimelineProject as Project} from '../../packages/project-model/timeline';
 
 type State = {
   token: string;
   project: Project | null; past: Project[]; future: Project[]; dirty: boolean; version: number;
-  open: (project: Project) => void;
+  open: (project: unknown) => void;
   commit: (next: Project) => void;
   edit: (action: (draft: Project) => void) => void;
-  saved: (project: Project, version: number) => void;
+  saved: (project: unknown, version: number) => void;
   undo: () => void; redo: () => void;
 };
 export const useEditor = create<State>((set, get) => ({
@@ -20,7 +20,8 @@ export const useEditor = create<State>((set, get) => ({
     set({project: parseProject(next), past: [...past.slice(-49), project], future: [], dirty: true, version: version + 1});
   },
   edit: action => {const {project, commit} = get(); if (project) commit(changeProject(project, action));},
-  saved: (saved, version) => {
+  saved: (input, version) => {
+    const saved = parseProject(input);
     const current = get();
     if (current.project?.id !== saved.id) return;
     set({project: current.version === version ? saved : {...current.project!, revision: saved.revision}, dirty: current.version !== version});

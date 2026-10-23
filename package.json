@@ -15,11 +15,15 @@
     "proof:align": "node scripts/python.mjs -X utf8 services/lyric-alignment/align.py .cache/proof/amazing-grace.mp3 tests/fixtures/amazing-grace.txt .cache/proof/alignment.project.json",
     "proof:render": "node scripts/render-proof.mjs",
     "proof:verify": "node scripts/verify-proof.mjs",
-    "test:editor": "node scripts/verify-editor.mjs",
-    "test:media": "node scripts/verify-media.mjs",
+    "test:editor": "tsx scripts/verify-editor.mjs",
+    "test:media": "tsx scripts/verify-media.mjs",
     "test:backgrounds": "tsx scripts/verify-backgrounds.ts",
+    "test:timeline": "tsx scripts/verify-timeline.ts",
     "test:recents": "tsx scripts/verify-recents.ts",
-    "test:full-export": "node scripts/verify-full-export.mjs"
+    "test:full-export": "node scripts/verify-full-export.mjs",
+    "test:alignment:acceptance": "node scripts/python.mjs scripts/verify-alignment.py",
+    "test:visual": "tsx scripts/verify-visual.ts",
+    "benchmark:editor": "tsx scripts/benchmark-editor.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.6",

@@ -65,11 +65,11 @@ Space toggles playback outside focused controls/text fields. Ctrl/Cmd+Z undoes; 
 
 Runtime artifacts: artifacts/editor/verification.json, workbench.png, narrow.png, export.mp4, full-export.json, full-song.mp4, and media/verification.json. Proof artifacts remain under artifacts/parity/ and artifacts/verification.json. These stay local and ignored by Git.
 
-## Limits and remaining acceptance
+## Known limits
 
 - One song track with sequential clips; no simultaneous mixing. Alignment requires one complete original song clip. Align first, then edit audio; restore the original clip before realigning.
 - Upload limits: 500 MB, audio/video up to one hour, frames/images up to 16 megapixels. These are bounded input limits, not tested maximum-workload guarantees.
 - Up to 500 visual clips across numbered layers, with at most two simultaneous clips per layer for crossfades; lyric clips cannot overlap. Existing projects default to fully opaque Layer 1. Invalid timing is rejected. Trimming away words retains source text and clears incomplete word timing for correction.
-- The 26/28 automatic result is coverage only. Two lines need manual correction. Independent median/p95 singing-boundary error, correction burden, and listening approval remain open. Audio correlation proves transport synchronization, not lyric alignment accuracy.
+- The earlier 26/28 automatic result is coverage only. Current-model measurements are recorded in acceptance-review.md. Independent median/p95 singing-boundary error, correction burden, and listening approval are unverified and were removed from MVP scope at the user's request. Audio correlation proves transport synchronization, not lyric alignment accuracy.
 - Offered multilingual models are not quality-validated. Unsupported codec variants, actual disk exhaustion, maximum-size workloads, custom fonts, and non-Windows platforms remain unverified.
-- M1-M4 feature slices are delivered. M5 core export and focused recovery checks are delivered; broader performance/release acceptance remains open. No deployment, commit, push, paid service, or public media upload occurred.
+- All 32 retained MVP work packages, including bounded local visual/failure/performance checks, are delivered. See acceptance-review.md for measured scope. No deployment, commit, push, paid service, or public media upload occurred.

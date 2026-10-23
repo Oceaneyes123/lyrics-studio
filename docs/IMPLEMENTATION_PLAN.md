@@ -6,7 +6,7 @@ Date: 2026-10-22. Source: [PLAN.md](PLAN.md).
 
 Build a local browser-based editor that turns a song and pasted lyrics into synchronized, editable lyric videos. Users can correct alignment, style lyrics, edit media, save/reopen projects, and export MP4.
 
-At the planning baseline, the repository contained only the source brief. M0 implementation is now in progress; see [technical-proof.md](technical-proof.md) for actual dependency versions, working samples, tests, limitations, and outstanding evidence. M1-M5 remain pending. This plan preserves the brief and makes its requirements actionable.
+At the planning baseline, the repository contained only the source brief. All 32 retained MVP work packages are now delivered. On 2026-10-23, the user removed M0.2, M0.3, and M0.5 from the active scope. Existing measurements and limitations are preserved in [acceptance-review.md](acceptance-review.md).
 
 The root task_plan.md, findings.md, and progress.md track this planning task. Completing planning does not complete product implementation.
 
@@ -140,24 +140,21 @@ Cache transcription by audio hash, engine/model version, analysis settings, and 
 
 ## 6. Milestones and actionable backlog
 
-M0 quality evidence remains open. The user explicitly authorized proceeding with other features. M1-M3 feature slices and core M4/M5 behavior are implemented; broader visual and release QA remains open. Checked work packages are delivered tasks, not claims that every release gate passed.
+All retained MVP work packages are delivered within the documented test scope. M0.2, M0.3, and M0.5 were removed at the user's request; their unperformed measurements are not marked as passed.
 
 ### M0: Technical proof
 
 Dependency: none. Deliverable: a simple real exported lyric video plus a feasibility record.
 
 - [x] M0.1 Inventory Windows/browser, Node/Python, FFmpeg, CPU/RAM/GPU/VRAM, and disk. Verify exact lyric-align package identity, API, maintenance/license, faster-whisper compatibility, and applicable Remotion terms. Pin only a working dependency combination.
-- [ ] M0.2 Assemble permissioned fixtures: clear vocals, repeated chorus, long instrumental gap, sustained vocals, fast singing, inaccurate text. Manually annotate representative line/word boundaries. Add required languages/scripts explicitly.
-- [ ] M0.3 Run alignment, beginning with CPU where supported. Record load/processing time, peak memory, matched-line coverage, boundary error, unmatched lines, and repeat handling.
 - [x] M0.4 Create a minimal shared Player/Renderer composition with pinned local font, song audio, and timed lyrics. Render MP4.
-- [ ] M0.5 Compare visual boundary frames, probe codecs/dimensions/duration, and inspect/listen to exported audio. Use timestamped marker audio to measure initial offset and accumulating drift.
 - [x] M0.6 Record commands, versions, fixtures, measurements, limitations, and go/no-go in docs/technical-proof.md.
 
-Current decision: proceed with editor features as explicitly authorized by the user, retaining M0 accuracy/listening limitations. M0.2, M0.3, and M0.5 remain partial. See editor-implementation.md for delivered features and current evidence.
+Current decision: MVP complete within the revised scope. Removed task IDs are intentionally not renumbered. The acceptance record in [acceptance-review.md](acceptance-review.md) retains current-model coverage, stage measurements, optional review tools, and known accuracy/listening limitations.
 
 Exit gate: sample plays; Player/export visual events agree within one frame; marker audio shows no accumulating drift above one frame after encoder-delay accounting; uncertain/unmatched input remains explicit. Report alignment errors separately from deterministic visual timing.
 
-Provisional usability target for the clear-vocal fixture: at least 90% usable line matches, median line-boundary error <=250 ms, p95 <=750 ms. These are proposed product targets, not engine guarantees. Report word error and manual correction burden, then settle the acceptable word-quality target before M3.
+Historical proposed quality targets (90% usable line matches, median line error <=250 ms, p95 <=750 ms) were not established by independent annotations. They are not acceptance requirements for the revised MVP scope.
 
 If the named engine fails, document the concrete reason and evaluate one compatible alternative behind the adapter. Manual-only editing does not satisfy automatic alignment. Resolve renderer feasibility before building the full editor.
 
@@ -205,10 +202,10 @@ Dependency: M3. Deliverable: complete styled lyric video in shared preview/rende
 
 - [x] M4.1 Add font, size, color, alignment, position, outline, shadow, and small style presets using shared saved data.
 - [x] M4.2 Implement active-word color and progressive fill from clip-relative times. Define before-first, gap, and after-last states; gaps retain completed words without inventing an active word.
-- [ ] M4.3 Load identical licensed/bundled fonts for Player and Renderer. Check wrapping, punctuation, Unicode, multiline text, and missing-font handling. Base fill on actual layout, not character count alone.
+- [x] M4.3 Load identical licensed/bundled fonts for Player and Renderer. Check wrapping, punctuation, Unicode, multiline text, and missing-font handling. Base fill on actual layout, not character count alone.
 - [x] M4.4 Add crop, scale, reposition, and fit for video/images; persist normalized placement for resolution changes. Add 9:16 and 16:9 presets.
 - [x] M4.5 Implement cut, visual fade-in/out, and video crossfade with validated durations/overlaps. Keep the song continuous.
-- [ ] M4.6 Compare representative boundary frames and styles in portrait/landscape. Keep composition evaluation deterministic and free of wall-clock/random effects.
+- [x] M4.6 Compare representative boundary frames and styles in portrait/landscape. Keep composition evaluation deterministic and free of wall-clock/random effects.
 
 Exit gate: required styling, framing, transitions, and karaoke appear from the same saved data in preview/export with visual timing within one frame. Manual timing changes affect both paths. Optional active-word scaling stays deferred until required behavior passes.
 
@@ -219,9 +216,11 @@ Dependency: M4. Deliverable: usable MVP with reliable output and recovery.
 - [x] M5.1 Validate assets, fonts, schema, output capacity, and settings before rendering. Show untimed/review-needed lyrics; require an explicit export choice if those lines will be omitted.
 - [x] M5.2 Implement immutable export snapshots, queued background rendering, persisted progress/errors, cancellation, and completed-file download.
 - [x] M5.3 Verify 1280x720, 1920x1080, 720x1280, and 1080x1920 outputs with H.264/AAC and every offered FPS. Sanitize filenames and prevent unrelated-file overwrite.
-- [ ] M5.4 Exercise corrupt media, unsupported codec, worker/render failure, interrupted jobs, save conflicts, cancellation, and disk exhaustion. Preserve originals and last-good project state.
-- [ ] M5.5 Benchmark short and full-length songs on recorded hardware: import, waveform, alignment, export, memory, and timeline responsiveness. Set supported project limits from measurements; optimize only measured bottlenecks.
+- [x] M5.4 Exercise corrupt media, unsupported codec, worker/render failure, interrupted jobs, save conflicts, cancellation, and disk exhaustion. Preserve originals and last-good project state.
+- [x] M5.5 Benchmark short and full-length songs on recorded hardware: import, waveform, alignment, export, memory, and timeline responsiveness. Set supported project limits from measurements; optimize only measured bottlenecks.
 - [x] M5.6 Document prerequisites, startup, model downloads, project backup, correction, export, recovery, formats, and limitations.
+
+Acceptance evidence: [acceptance-review.md](acceptance-review.md). M4 font parity applies to the same Windows host; system fallback fonts are not portable guarantees. M5 failure tests safely inject decoder/ENOSPC errors instead of exhausting the user's disk. Performance is measured through five-minute 720p/30 FPS exports and a non-exported structural-limit timeline; larger jobs are not guaranteed by schema caps. Independent accuracy/listening measurements are unverified and excluded from the revised MVP scope.
 
 Exit gate: pass the acceptance matrix, export all four size/orientation presets, reopen/edit after restart, and run M1's lint/type/unit/integration/end-to-end checks. Retain measured evidence; do not mark unavailable or skipped checks passed.
 

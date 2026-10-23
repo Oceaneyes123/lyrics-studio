@@ -28,6 +28,8 @@ The editor supports waveform/timeline move, trim, split, delete, snapping, zoom,
 
 See [detailed controls, recovery, limits, and verification](docs/editor-implementation.md). Automatic timing remains review-required; unmatched lines are never given invented times. Alignment currently requires the original untrimmed song, and only English quality has been exercised. No public deployment is configured.
 
+MVP evidence, known limits, and reproducible checks are tracked in [acceptance-review.md](docs/acceptance-review.md): `npm run test:alignment:acceptance`, `npm run test:visual`, and `npm run benchmark:editor`. Run the visual/performance harnesses sequentially with ports 5174/3002 free. Acceptance audio uses the local permissioned test song; optional annotation files require independent human measurements.
+
 With the editor running:
 
 ```powershell
@@ -124,9 +126,11 @@ node scripts/python.mjs services/lyric-alignment/evaluate.py .cache/proof/alignm
 
 The evaluator reports coverage and median/p95 boundary errors only for annotated lines. Missing predictions reduce coverage; they do not receive invented errors. Mismatched word tokenization is reported as unscored, not silently compared.
 
-## Next gate
+## MVP status
 
-M0 quality measurements and listening review remain open. The user authorized implementing other features meanwhile; core editor and export work is now delivered. Broader release/performance acceptance remains open, as recorded in the implementation evidence.
+All 32 retained MVP work packages are delivered. The user removed independent annotation/accuracy and listening-review tasks from scope. Those measurements remain unverified; removal does not imply quality approval.
+
+The next-phase [advanced implementation plan](docs/ADVANCED_IMPLEMENTATION_PLAN.md) covers unified tracks, audio mixing, visual lyric timing, keyframes, text templates, transitions/effects, and later ducking/normalization. Its 36 new work packages are planned, not implemented; they do not reopen the completed MVP checklist.
 
 ## Sources and licensing
 

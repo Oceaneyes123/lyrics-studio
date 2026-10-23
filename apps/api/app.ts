@@ -10,7 +10,9 @@ import path from 'node:path';
 import {z} from 'zod';
 import {bundle} from '@remotion/bundler';
 import {makeCancelSignal, renderMedia, selectComposition} from '@remotion/renderer';
-import {parseProject, clipSchema, type Asset, type Project} from '../../packages/project-model/model';
+import type {Asset} from '../../packages/project-model/model';
+import {migrateTimeline as parseProject, timelineClipSchema, trackSchema, type TimelineProject as Project} from '../../packages/project-model/timeline';
+import {audioClips, lines} from '../../packages/editor-core/timeline-commands';
 import {parseProofProject} from '../../packages/project-model/proof';
 import {durationFrames} from '../../packages/project-model/proof';
 import {atomicJson, HttpError, Storage} from './storage';
@@ -71,10 +73,10 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     if (assetRead && origin) reply.header('Access-Control-Allow-Origin', origin).header('Vary', 'Origin');
   });
   app.get('/api/session', async () => ({token, maxUploadBytes: MAX_UPLOAD}));
-  app.get('/api/projects', async () => store.list());
-  app.post('/api/projects', async () => store.create());
+  app.get('/api/projects', async () => store.listTimeline());
+  app.post('/api/projects', async () => store.createTimeline());
   app.get<{Params: {id: string}}>('/api/projects/:id', async request => {
-    const id = identity.parse(request.params.id), loaded = await store.load(id);
+    const id = identity.parse(request.params.id), loaded = await store.loadTimeline(id);
     const missing = [];
     for (const asset of loaded.project.assets) {
       try {await store.existingFile(id, 'assets', asset.file);} catch {missing.push(asset.name);}
@@ -85,7 +87,7 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     let project: Project;
     try {project = parseProject(request.body);} catch (error) {throw new HttpError(400, error instanceof Error ? error.message : 'Invalid project');}
     if (project.id !== identity.parse(request.params.id)) throw new HttpError(400, 'Project ID mismatch');
-    return store.save(project);
+    return store.saveTimeline(project);
   });
   app.post<{Params: {id: string}}>('/api/projects/:id/assets', async request => {
     const id = identity.parse(request.params.id), file = await request.file();
@@ -93,7 +95,7 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     const extension = path.extname(file.filename).toLowerCase().replace('.jpeg', '.jpg');
     if (!mime[extension]) {file.file.resume(); throw new HttpError(400, 'Use WAV, MP3, MP4, JPG, PNG, or GIF');}
     const replacementId = (request.query as {replace?: string}).replace;
-    const previous = replacementId ? (await store.load(id)).project.assets.find(a => a.id === identity.parse(replacementId)) : undefined;
+    const previous = replacementId ? (await store.loadTimeline(id)).project.assets.find(a => a.id === identity.parse(replacementId)) : undefined;
     if (replacementId && !previous) {file.file.resume(); throw new HttpError(404, 'Asset to repair was not found');}
     const assetId = previous?.id ?? randomUUID(), filename = previous?.file ?? `${assetId}${extension}`;
     const folder = await store.location(id, 'assets');
@@ -120,18 +122,16 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
       const asset: Asset = {id: assetId, name: path.basename(file.filename), file: filename, kind, durationMs: duration,
         width: stream?.width ?? 0, height: stream?.height ?? 0, hash: digest};
       await rename(temporary, target);
-      if (previous) return {asset: previous, project: (await store.load(id)).project};
-      return await store.locked(id, async () => {
-        const {project} = await store.load(id); project.assets.push(asset);
-        if (kind === 'audio' && !project.audioClips.length) {
-          const occupied = Math.max(0, ...project.backgrounds.map(c => c.startMs + c.durationMs), ...project.lines.map(l => l.startMs === null ? 0 : l.startMs + l.durationMs!));
-          project.durationMs = Math.max(duration, occupied); project.audioFile = filename;
-          project.audioClips.push(clipSchema.parse({id: randomUUID(), assetId, startMs: 0, durationMs: duration, sourceInMs: 0}));
-        }
-        project.revision++; parseProject(project);
-        await atomicJson(await store.location(id, 'project.json'), project);
-        return {asset, project};
-      });
+      if (previous) return {asset: previous, project: (await store.loadTimeline(id)).project};
+      const {project} = await store.loadTimeline(id); project.assets.push(asset);
+      if (kind === 'audio' && !audioClips(project).length) {
+        project.durationMs = Math.max(duration, 0, ...project.clips.map(c => c.startMs + c.durationMs));
+        let track = project.tracks.find(track => track.kind === 'audio');
+        if (!track) {track = trackSchema.parse({id: randomUUID(), name: 'Song', kind: 'audio'}); project.tracks.unshift(track);}
+        project.clips.push(timelineClipSchema.parse({id: randomUUID(), assetId, kind: 'audio', trackId: track.id,
+          startMs: 0, durationMs: duration, sourceInMs: 0}));
+      }
+      return {asset, project: await store.saveTimeline(project, true)};
     } catch (error) {
       await unlink(temporary).catch(() => {}); if (!previous) await unlink(target).catch(() => {});
       if (error instanceof HttpError) throw error;
@@ -139,7 +139,7 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     }
   });
   app.get<{Params: {id: string; assetId: string}}>('/api/projects/:id/assets/:assetId', async (request, reply) => {
-    const {project} = await store.load(identity.parse(request.params.id));
+    const {project} = await store.loadTimeline(identity.parse(request.params.id));
     const asset = project.assets.find(a => a.id === request.params.assetId);
     if (!asset) throw new HttpError(404, 'Asset not found');
     const file = await store.existingFile(project.id, 'assets', asset.file), info = await stat(file);
@@ -157,29 +157,29 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
   });
   app.post<{Params: {id: string}}>('/api/projects/:id/alignment-jobs', async request => {
     const {language} = z.object({language: z.enum(['en', 'tl', 'es', 'ja']).default('en')}).parse(request.body ?? {});
-    const {project} = await store.load(identity.parse(request.params.id));
-    const clip = project.audioClips[0], asset = project.assets.find(a => a.id === clip?.assetId);
+    const {project} = await store.loadTimeline(identity.parse(request.params.id));
+    const clip = audioClips(project)[0], asset = project.assets.find(a => a.id === clip?.assetId);
     // shortcut: full original song alignment, map edited audio clips before allowing post-trim realignment.
-    if (!asset || project.audioClips.length !== 1 || clip.sourceInMs || clip.startMs || clip.durationMs !== asset.durationMs)
+    if (!asset || audioClips(project).length !== 1 || clip.sourceInMs || clip.startMs || clip.durationMs !== asset.durationMs)
       throw new HttpError(400, 'Align the original song before trimming or splitting its audio');
-    if (!project.sourceLyrics.trim()) throw new HttpError(400, 'Paste lyrics before aligning');
+    if (!project.lyricSource.text.trim()) throw new HttpError(400, 'Paste lyrics before aligning');
     const audio = await store.existingFile(project.id, 'assets', asset.file);
     return jobs.start(project.id, project.revision, 'alignment', async (job, signal, update) => {
       const directory = path.join(jobs.folder, job.id); await mkdir(directory, {recursive: true});
       const lyrics = path.join(directory, 'lyrics.txt'), output = path.join(directory, 'result.json');
-      await writeFile(lyrics, project.sourceLyrics, 'utf8');
+      await writeFile(lyrics, project.lyricSource.text, 'utf8');
       await update('Listening and matching lyrics (first use may download model weights)');
       await runPython(['services/lyric-alignment/align.py', audio, lyrics, output, '--language', language,
         '--model', 'small', '--cache-dir', path.resolve('.cache/transcription')], signal);
       const aligned = parseProofProject(JSON.parse(await readFile(output, 'utf8')));
-      return {lines: aligned.lines, sourceLyrics: project.sourceLyrics, audioHash: asset.hash};
+      return {lines: aligned.lines, sourceLyrics: project.lyricSource.text, audioHash: asset.hash};
     });
   });
   app.post<{Params: {id: string}}>('/api/projects/:id/export-jobs', async request => {
     const {allowUntimed} = z.object({allowUntimed: z.boolean().default(false)}).parse(request.body ?? {});
-    const {project} = await store.load(identity.parse(request.params.id));
-    if (!project.audioClips.length) throw new HttpError(400, 'Import song audio before exporting');
-    if (!allowUntimed && project.lines.some(l => l.status !== 'manual')) throw new HttpError(400, 'Review automatic and untimed lyrics, or explicitly export with them');
+    const {project} = await store.loadTimeline(identity.parse(request.params.id));
+    if (!audioClips(project).length) throw new HttpError(400, 'Import song audio before exporting');
+    if (!allowUntimed && lines(project).some(l => l.status !== 'manual')) throw new HttpError(400, 'Review automatic and untimed lyrics, or explicitly export with them');
     for (const asset of project.assets) await store.existingFile(project.id, 'assets', asset.file);
     return jobs.start(project.id, project.revision, 'export', async (job, signal, update) => {
       const directory = path.join(jobs.folder, job.id); await mkdir(directory, {recursive: true});
