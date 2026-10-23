@@ -1,0 +1,4 @@
+lyric-align[asr]==0.4.2
+faster-whisper==1.2.1
+# faster-whisper 1.2.1 passes metadata_errors, removed by PyAV 19.
+av==18.1.0

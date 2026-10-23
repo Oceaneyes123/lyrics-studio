@@ -1,0 +1,48 @@
+{
+  "name": "lyrics-studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "build": "vite build",
+    "dev:proof": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "test": "vitest run",
+    "test:alignment": "node scripts/python.mjs -m unittest discover -s services/lyric-alignment -p test_*.py",
+    "proof:prepare": "node scripts/python.mjs scripts/prepare-proof.py --download-song",
+    "proof:align": "node scripts/python.mjs -X utf8 services/lyric-alignment/align.py .cache/proof/amazing-grace.mp3 tests/fixtures/amazing-grace.txt .cache/proof/alignment.project.json",
+    "proof:render": "node scripts/render-proof.mjs",
+    "proof:verify": "node scripts/verify-proof.mjs",
+    "test:editor": "node scripts/verify-editor.mjs",
+    "test:media": "node scripts/verify-media.mjs",
+    "test:backgrounds": "tsx scripts/verify-backgrounds.ts",
+    "test:recents": "tsx scripts/verify-recents.ts",
+    "test:full-export": "node scripts/verify-full-export.mjs"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.6",
+    "@fontsource/inter": "5.3.0",
+    "@remotion/player": "4.0.537",
+    "fastify": "^5.12.7",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.537",
+    "wavesurfer.js": "^8.0.3",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@remotion/bundler": "4.0.537",
+    "@remotion/renderer": "4.0.537",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

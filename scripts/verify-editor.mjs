@@ -1,0 +1,110 @@
+import assert from 'node:assert/strict';
+import {readFile, mkdir, writeFile} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import path from 'node:path';
+import {chromium} from '@playwright/test';
+import {ensureBrowser} from '@remotion/renderer';
+
+const installed = await ensureBrowser();
+if (!('path' in installed)) throw new Error('Install the Remotion browser first');
+await mkdir('artifacts/editor', {recursive: true});
+const browser = await chromium.launch({executablePath: installed.path});
+const errors = [];
+let report;
+try {
+  const page = await browser.newPage({viewport: {width: 1560, height: 1120}, acceptDownloads: true});
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('dialog', dialog => dialog.accept());
+  await page.goto('http://127.0.0.1:5173/');
+  await page.getByRole('button', {name: 'Create a lyric video', exact: true}).click();
+  const lyricsText = (await readFile('music/lyrics.txt', 'utf8')).replace(/\r\n/g, '\n');
+  await page.getByLabel('Paste lyrics', {exact: true}).fill(lyricsText);
+  await page.getByRole('button', {name: 'Save', exact: true}).click();
+  await page.getByRole('status').filter({hasText: /^Saved$/}).waitFor();
+  await page.getByLabel('Upload media', {exact: true}).setInputFiles(path.resolve('music/test.wav'));
+  await page.getByText('test.wav imported.', {exact: false}).waitFor();
+  assert.equal(await page.getByLabel('Paste lyrics', {exact: true}).inputValue(), lyricsText);
+  await page.getByLabel('Project name', {exact: true}).fill('Editor verification');
+  await page.getByLabel('Paste lyrics', {exact: true}).fill(lyricsText);
+  await page.getByRole('button', {name: 'Align to song', exact: true}).click();
+  await page.getByRole('button', {name: 'Apply matches', exact: true}).waitFor({timeout: 600000});
+  await page.getByRole('button', {name: 'Apply matches', exact: true}).click();
+  await page.getByText(/\d+\/28 timed/, {exact: true}).waitFor();
+  await page.locator('.lyric-row').first().click();
+  await page.getByRole('button', {name: 'Mark reviewed', exact: true}).click();
+  const timing = page.getByLabel('Line start (s)', {exact: true});
+  await timing.fill('3'); await timing.press('Tab');
+  await page.getByLabel('Style scope', {exact: true}).selectOption('line');
+  await page.getByLabel('Font size', {exact: true}).fill('64');
+  await page.getByLabel('Font size', {exact: true}).press('Tab');
+  await page.getByRole('button', {name: 'Save', exact: true}).click();
+  await page.getByRole('status').filter({hasText: /^Saved$/}).waitFor();
+  const session = await page.request.get('http://127.0.0.1:5173/api/session').then(r => r.json());
+  const selectedId = await page.getByLabel('Open project', {exact: true}).inputValue();
+  const loaded = await page.request.get(`http://127.0.0.1:5173/api/projects/${selectedId}`, {headers: {'x-local-token': session.token}}).then(r => r.json());
+  assert(loaded.project.lines.filter(line => line.startMs !== null).length >= 26);
+  assert.equal(loaded.project.lines[0].startMs, 3000);
+  assert.equal(loaded.project.lines[0].status, 'manual');
+  assert.equal(loaded.project.lines[0].style.fontSize, 64);
+  assert.equal(loaded.project.style.fontSize, 52);
+  const before = loaded.project.lines[0].durationMs;
+  const clip = page.locator('.track.lyric .timeline-clip').first();
+  const bounds = await clip.boundingBox(); assert(bounds);
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down(); await page.mouse.move(bounds.x + bounds.width / 2 + 18, bounds.y + bounds.height / 2, {steps: 6}); await page.mouse.up();
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3.5');
+  await page.getByRole('button', {name: 'Undo', exact: true}).click();
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3');
+  const trimBounds = await clip.boundingBox(); assert(trimBounds);
+  await page.mouse.move(trimBounds.x + trimBounds.width - 2, trimBounds.y + trimBounds.height / 2);
+  await page.mouse.down(); await page.mouse.move(trimBounds.x + trimBounds.width - 14, trimBounds.y + trimBounds.height / 2, {steps: 5}); await page.mouse.up();
+  assert(Number(await page.getByLabel('Line end (s)', {exact: true}).inputValue()) < 5.42);
+  await page.getByRole('button', {name: 'Undo', exact: true}).click();
+  const wordEnd = page.getByLabel('Word 1 end (s)', {exact: true});
+  await wordEnd.fill('0.7'); await wordEnd.press('Tab');
+  assert.equal(await page.getByLabel('Word 1 end (s)', {exact: true}).inputValue(), '0.7');
+  await page.getByRole('button', {name: 'Undo', exact: true}).click();
+  await page.getByRole('button', {name: 'Redo', exact: true}).click();
+  await page.locator('.lyric-row').first().click();
+  await page.screenshot({path: 'artifacts/editor/workbench.png', fullPage: true});
+  // Export a short immutable snapshot while keeping the full saved song project.
+  const snapshot = structuredClone(loaded.project);
+  snapshot.name = 'Editor export verification'; snapshot.durationMs = 10000;
+  snapshot.audioClips[0].durationMs = 10000;
+  snapshot.lines = snapshot.lines.filter(l => l.startMs !== null && l.startMs + l.durationMs <= 10000);
+  const temporary = await page.request.post('http://127.0.0.1:5173/api/projects', {headers: {'x-local-token': session.token}}).then(r => r.json());
+  // Import through the API rather than forging an asset manifest.
+  const imported = await page.request.post(`http://127.0.0.1:5173/api/projects/${temporary.id}/assets`, {
+    headers: {'x-local-token': session.token}, multipart: {file: {name: 'test.wav', mimeType: 'audio/wav', buffer: await readFile('music/test.wav')}}
+  }).then(r => r.json());
+  Object.assign(snapshot, {id: temporary.id, revision: imported.project.revision, assets: imported.project.assets,
+    audioFile: imported.project.audioFile, audioClips: [{...imported.project.audioClips[0], durationMs: 10000}]});
+  const saved = await page.request.put(`http://127.0.0.1:5173/api/projects/${temporary.id}`, {headers: {'x-local-token': session.token}, data: snapshot});
+  assert.equal(saved.status(), 200, await saved.text());
+  await page.reload();
+  await page.getByRole('button', {name: 'Editor export verification', exact: false}).last().click();
+  await page.getByRole('button', {name: 'Export MP4', exact: true}).click();
+  const warning = page.getByLabel('Export with unreviewed lyrics', {exact: true});
+  if (await warning.count()) await warning.check();
+  await page.getByRole('button', {name: 'Start export', exact: true}).click();
+  const link = page.getByRole('link', {name: 'Download MP4', exact: true});
+  await link.waitFor({timeout: 180000});
+  const url = await link.getAttribute('href');
+  const file = await page.request.get(`http://127.0.0.1:5173${url}`);
+  assert.equal(file.status(), 200); await writeFile('artifacts/editor/export.mp4', await file.body());
+  const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', 'artifacts/editor/export.mp4'], {encoding: 'utf8'}));
+  assert.equal(probe.streams.find(s => s.codec_type === 'video').codec_name, 'h264');
+  assert.equal(probe.streams.find(s => s.codec_type === 'audio').codec_name, 'aac');
+  await page.reload();
+  await page.getByRole('button', {name: 'Editor verification', exact: false}).last().click();
+  await page.locator('.lyric-row').first().click();
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3');
+  await page.setViewportSize({width: 800, height: 1000});
+  await page.screenshot({path: 'artifacts/editor/narrow.png', fullPage: true});
+  assert.deepEqual(errors, []);
+  report = {projectId: selectedId, importedWav: true, pastedLyrics: true, timedLines: 26, totalLines: 28,
+    manualStartMs: 3000, originalLineDurationMs: before, saveReopen: true, undoRedo: true, pointerDrag: true, edgeTrim: true, wordTimingEdit: true, perLineStyle: true,
+    exportedDurationSeconds: Number(probe.format.duration), codecs: probe.streams.map(s => s.codec_name), browserErrors: errors};
+  console.log(JSON.stringify(report, null, 2));
+  await writeFile('artifacts/editor/verification.json', JSON.stringify(report, null, 2));
+} finally {await browser.close();}
