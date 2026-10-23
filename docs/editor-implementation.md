@@ -34,7 +34,7 @@ Space toggles playback outside focused controls/text fields. Ctrl/Cmd+Z undoes; 
 ## Implementation choices
 
 - One root Node package owns apps/web, apps/api, and shared packages. Python stays isolated in .venv. One npm run dev starts both local services.
-- Fixed Audio, Video, and Lyrics arrays represent the three MVP tracks. No generic track framework, database, cloud queue, or independent Python HTTP service was introduced.
+- Existing audio, background, and lyric arrays remain the project structure. Background clips carry layer order and opacity; numbered visual rows share those clips. Audio and lyrics retain one track each. No generic track framework, database, cloud queue, or independent Python HTTP service was introduced.
 - Existing proof timing helpers and the same Remotion component power preview/export. The editor adds registered asset URLs, clips, transforms, and validated styles; proof defaults remain compatible.
 - Native pointer controls implement the small timeline surface; numeric/keyboard controls provide alternatives. Unused dnd-kit/Immer dependencies were removed. Scoped CSS avoids a new styling framework.
 - Zod validates persisted/editor inputs; Fastify/multipart handle the local API and streamed imports; Zustand owns history. Player owns playback; WaveSurfer never starts independent playback.
@@ -46,13 +46,14 @@ Space toggles playback outside focused controls/text fields. Ctrl/Cmd+Z undoes; 
 | Check | Result |
 |---|---|
 | Strict typecheck and semantic/unused-code lint | Passed |
-| TypeScript unit/API/lifecycle suite | 42 tests passed |
+| TypeScript unit/API/lifecycle suite | 45 tests passed |
 | Python alignment/evaluation suite | 15 tests passed; existing worker logic retained |
 | Vite production build | Passed; vendor size/use-client notices are non-fatal |
 | Actual editor browser journey | Upload, pasted lyrics, real alignment, timing correction, pointer move, undo/redo, word edit, save/reopen, and MP4 download passed |
 | Imported media | Actual WAV, MP3, PNG, JPG, MP4 fixtures passed |
 | Export presets | 1280x720 at 24 FPS; 1920x1080 at 25 FPS; 720x1280 and 1080x1920 at 30 FPS passed |
 | Backgrounds | Decoded pixels confirm imported image/video output; media verifier also checks the crossfade midpoint |
+| Visual layers (`npm run test:backgrounds`) | PNG/GIF/video drops, cross-layer/time dragging, undo/redo, save/reopen, GIF looping, and three-layer preview/export pixels passed |
 | Cancellation/restart | Real Python process-tree cancellation/deadline, real render cancellation/result gating, queued cancellation, and persisted interrupted-job recovery passed |
 | Save failures | Concurrent stale writes rejected; simulated ENOSPC replacement failure preserves valid JSON; corrupt main file recovers backup; future schemas rejected |
 | Repair | Wrong-content repair rejected without deleting originals; identical content restores missing media without duplicating assets |

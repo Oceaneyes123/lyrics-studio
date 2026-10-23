@@ -19,10 +19,10 @@ const browser = await chromium.launch({executablePath: installed.path});
 try {
   await api.app.listen({host: '127.0.0.1', port: 3002}); await web.listen();
   const ffmpeg = (args: string[]) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], {windowsHide: true});
-  const png = path.join(root, 'red.png'), gif = path.join(root, 'animated.gif'), audio = path.join(root, 'song.wav'), green = path.join(root, 'green.png');
+  const png = path.join(root, 'red.png'), gif = path.join(root, 'animated.gif'), audio = path.join(root, 'song.wav'), green = path.join(root, 'green.mp4');
   ffmpeg(['-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '30', audio]);
   ffmpeg(['-f', 'lavfi', '-i', 'color=red:s=64x64', '-frames:v', '1', png]);
-  ffmpeg(['-f', 'lavfi', '-i', 'color=0x00ff00:s=64x64', '-frames:v', '1', green]);
+  ffmpeg(['-f', 'lavfi', '-i', 'color=0x00ff00:s=64x64:r=30:d=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', green]);
   ffmpeg(['-f', 'lavfi', '-i', 'color=red:s=64x64:r=10:d=0.5', '-f', 'lavfi', '-i', 'color=blue:s=64x64:r=10:d=0.5',
     '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0,split[a][b];[a]palettegen[p];[b][p]paletteuse', gif]);
   const page = await browser.newPage({viewport: {width: 1560, height: 1120}});
@@ -80,9 +80,9 @@ try {
   await page.getByRole('button', {name: 'Redo', exact: true}).click();
   await expect(page.getByLabel('Layer', {exact: true})).toHaveValue('3');
   await upload.setInputFiles(green);
-  await page.getByText('green.png imported.', {exact: false}).waitFor();
+  await page.getByText('green.mp4 imported.', {exact: false}).waitFor();
   await page.locator('[data-video-layer="1"]').scrollIntoViewIfNeeded();
-  await page.locator('.asset').filter({hasText: 'green.png'}).dragTo(page.locator('[data-video-layer="1"]'), {sourcePosition: {x: 15, y: 18}, targetPosition: {x: 18, y: 20}});
+  await page.locator('.asset').filter({hasText: 'green.mp4'}).dragTo(page.locator('[data-video-layer="1"]'), {sourcePosition: {x: 15, y: 18}, targetPosition: {x: 18, y: 20}});
   await expect(page.getByLabel('Layer', {exact: true})).toHaveValue('2');
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('0.5');
   await opacity.fill('50'); await opacity.press('Tab');

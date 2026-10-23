@@ -82,7 +82,7 @@ try {
   const saved = await page.request.put(`http://127.0.0.1:5173/api/projects/${temporary.id}`, {headers: {'x-local-token': session.token}, data: snapshot});
   assert.equal(saved.status(), 200, await saved.text());
   await page.reload();
-  await page.getByRole('button', {name: 'Editor export verification', exact: false}).last().click();
+  await page.getByRole('button', {name: 'Editor export verification Open', exact: true}).click();
   await page.getByRole('button', {name: 'Export MP4', exact: true}).click();
   const warning = page.getByLabel('Export with unreviewed lyrics', {exact: true});
   if (await warning.count()) await warning.check();
@@ -96,7 +96,7 @@ try {
   assert.equal(probe.streams.find(s => s.codec_type === 'video').codec_name, 'h264');
   assert.equal(probe.streams.find(s => s.codec_type === 'audio').codec_name, 'aac');
   await page.reload();
-  await page.getByRole('button', {name: 'Editor verification', exact: false}).last().click();
+  await page.getByRole('button', {name: 'Editor verification Open', exact: true}).click();
   await page.locator('.lyric-row').first().click();
   assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3');
   await page.setViewportSize({width: 800, height: 1000});
