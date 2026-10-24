@@ -12,16 +12,20 @@ import {bundle} from '@remotion/bundler';
 import {makeCancelSignal, renderMedia, selectComposition} from '@remotion/renderer';
 import type {Asset} from '../../packages/project-model/model';
 import {migrateTimeline as parseProject, timelineClipSchema, trackSchema, type TimelineProject as Project} from '../../packages/project-model/timeline';
-import {audioClips, lines} from '../../packages/editor-core/timeline-commands';
+import {audioClips, lines, alignmentReference} from '../../packages/editor-core/timeline-commands';
 import {parseProofProject} from '../../packages/project-model/proof';
 import {durationFrames} from '../../packages/project-model/proof';
 import {atomicJson, HttpError, Storage} from './storage';
 import {Jobs} from './jobs';
+import {registerTextRoutes} from './text';
+import {registerAudioProcessingRoutes, measureLoudness, validateLoudness} from './audio-processing';
+import {currentProcessedMix, processingEnabled, processedMixSchema} from '../../packages/project-model/audio-processing';
 
 const execute = promisify(execFile);
 const identity = z.string().uuid();
 const MAX_UPLOAD = 500 * 1024 * 1024;
-const mime: Record<string, string> = {'.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif'};
+const mime: Record<string, string> = {'.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.png': 'image/png', '.jpg': 'image/jpeg', '.gif': 'image/gif',
+  '.ttf': 'font/ttf', '.otf': 'font/otf', '.woff': 'font/woff', '.woff2': 'font/woff2'};
 
 export function runPython(args: string[], signal: AbortSignal, timeoutMs = 30 * 60 * 1000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -73,12 +77,14 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     if (assetRead && origin) reply.header('Access-Control-Allow-Origin', origin).header('Vary', 'Origin');
   });
   app.get('/api/session', async () => ({token, maxUploadBytes: MAX_UPLOAD}));
+  registerTextRoutes(app, store);
+  registerAudioProcessingRoutes(app, store, jobs);
   app.get('/api/projects', async () => store.listTimeline());
   app.post('/api/projects', async () => store.createTimeline());
   app.get<{Params: {id: string}}>('/api/projects/:id', async request => {
     const id = identity.parse(request.params.id), loaded = await store.loadTimeline(id);
     const missing = [];
-    for (const asset of loaded.project.assets) {
+    for (const asset of [...loaded.project.assets, ...loaded.project.fonts]) {
       try {await store.existingFile(id, 'assets', asset.file);} catch {missing.push(asset.name);}
     }
     return {...loaded, missing};
@@ -93,7 +99,7 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
     const id = identity.parse(request.params.id), file = await request.file();
     if (!file) throw new HttpError(400, 'Choose an audio, video, or image file');
     const extension = path.extname(file.filename).toLowerCase().replace('.jpeg', '.jpg');
-    if (!mime[extension]) {file.file.resume(); throw new HttpError(400, 'Use WAV, MP3, MP4, JPG, PNG, or GIF');}
+    if (!['.wav', '.mp3', '.mp4', '.jpg', '.png', '.gif'].includes(extension)) {file.file.resume(); throw new HttpError(400, 'Use WAV, MP3, MP4, JPG, PNG, or GIF');}
     const replacementId = (request.query as {replace?: string}).replace;
     const previous = replacementId ? (await store.loadTimeline(id)).project.assets.find(a => a.id === identity.parse(replacementId)) : undefined;
     if (replacementId && !previous) {file.file.resume(); throw new HttpError(404, 'Asset to repair was not found');}
@@ -124,12 +130,15 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
       await rename(temporary, target);
       if (previous) return {asset: previous, project: (await store.loadTimeline(id)).project};
       const {project} = await store.loadTimeline(id); project.assets.push(asset);
-      if (kind === 'audio' && !audioClips(project).length) {
-        project.durationMs = Math.max(duration, 0, ...project.clips.map(c => c.startMs + c.durationMs));
-        let track = project.tracks.find(track => track.kind === 'audio');
-        if (!track) {track = trackSchema.parse({id: randomUUID(), name: 'Song', kind: 'audio'}); project.tracks.unshift(track);}
-        project.clips.push(timelineClipSchema.parse({id: randomUUID(), assetId, kind: 'audio', trackId: track.id,
-          startMs: 0, durationMs: duration, sourceInMs: 0}));
+      if (kind === 'audio') {
+        const first = !audioClips(project).length;
+        if (first) project.durationMs = Math.max(duration, 0, ...project.clips.map(c => c.startMs + c.durationMs));
+        let track = project.tracks.find(track => track.kind === 'audio' && !track.locked && !project.clips.some(c => c.trackId === track.id));
+        if (!track) {track = trackSchema.parse({id: randomUUID(), name: first ? 'Song' : asset.name, kind: 'audio'}); project.tracks.unshift(track);}
+        const clip = timelineClipSchema.parse({id: randomUUID(), assetId, kind: 'audio', trackId: track.id,
+          startMs: 0, durationMs: Math.min(duration, project.durationMs), sourceInMs: 0});
+        project.clips.push(clip);
+        if (first) project.alignmentSourceClipId = clip.id;
       }
       return {asset, project: await store.saveTimeline(project, true)};
     } catch (error) {
@@ -140,9 +149,14 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
   });
   app.get<{Params: {id: string; assetId: string}}>('/api/projects/:id/assets/:assetId', async (request, reply) => {
     const {project} = await store.loadTimeline(identity.parse(request.params.id));
-    const asset = project.assets.find(a => a.id === request.params.assetId);
+    let asset = [...project.assets, ...project.fonts, ...(project.processedMix ? [project.processedMix] : [])].find(a => a.id === request.params.assetId);
+    if (!asset && /^[a-f\d]{64}$/.test(request.params.assetId)) {
+      try {const cached = processedMixSchema.parse(JSON.parse(await readFile(await store.existingFile(project.id, 'mixes', `${request.params.assetId}.json`), 'utf8')));
+        if (cached.id === request.params.assetId) asset = cached;
+      } catch { /* A missing cache entry is not an asset. */ }
+    }
     if (!asset) throw new HttpError(404, 'Asset not found');
-    const file = await store.existingFile(project.id, 'assets', asset.file), info = await stat(file);
+    const file = await store.existingFile(project.id, /^[a-f\d]{64}$/.test(asset.id) ? 'mixes' : 'assets', asset.file), info = await stat(file);
     reply.header('Accept-Ranges', 'bytes').type(mime[path.extname(asset.file)]);
     if (request.headers.range) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range);
@@ -158,10 +172,9 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
   app.post<{Params: {id: string}}>('/api/projects/:id/alignment-jobs', async request => {
     const {language} = z.object({language: z.enum(['en', 'tl', 'es', 'ja']).default('en')}).parse(request.body ?? {});
     const {project} = await store.loadTimeline(identity.parse(request.params.id));
-    const clip = audioClips(project)[0], asset = project.assets.find(a => a.id === clip?.assetId);
-    // shortcut: full original song alignment, map edited audio clips before allowing post-trim realignment.
-    if (!asset || audioClips(project).length !== 1 || clip.sourceInMs || clip.startMs || clip.durationMs !== asset.durationMs)
-      throw new HttpError(400, 'Align the original song before trimming or splitting its audio');
+    let reference: ReturnType<typeof alignmentReference>;
+    try {reference = alignmentReference(project);} catch (error) {throw new HttpError(400, (error as Error).message);}
+    const {asset, mapping} = reference;
     if (!project.lyricSource.text.trim()) throw new HttpError(400, 'Paste lyrics before aligning');
     const audio = await store.existingFile(project.id, 'assets', asset.file);
     return jobs.start(project.id, project.revision, 'alignment', async (job, signal, update) => {
@@ -172,19 +185,21 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
       await runPython(['services/lyric-alignment/align.py', audio, lyrics, output, '--language', language,
         '--model', 'small', '--cache-dir', path.resolve('.cache/transcription')], signal);
       const aligned = parseProofProject(JSON.parse(await readFile(output, 'utf8')));
-      return {lines: aligned.lines, sourceLyrics: project.lyricSource.text, audioHash: asset.hash};
+      return {lines: aligned.lines, sourceLyrics: project.lyricSource.text, audioHash: asset.hash, reference: mapping};
     });
   });
   app.post<{Params: {id: string}}>('/api/projects/:id/export-jobs', async request => {
     const {allowUntimed} = z.object({allowUntimed: z.boolean().default(false)}).parse(request.body ?? {});
     const {project} = await store.loadTimeline(identity.parse(request.params.id));
     if (!audioClips(project).length) throw new HttpError(400, 'Import song audio before exporting');
+    if (processingEnabled(project) && !currentProcessedMix(project)) throw new HttpError(400, 'Audio processing is missing or stale. Rebuild and apply the processed mix before exporting.');
     if (!allowUntimed && lines(project).some(l => l.status !== 'manual')) throw new HttpError(400, 'Review automatic and untimed lyrics, or explicitly export with them');
-    for (const asset of project.assets) await store.existingFile(project.id, 'assets', asset.file);
+    for (const asset of [...project.assets, ...project.fonts]) await store.existingFile(project.id, 'assets', asset.file);
+    if (currentProcessedMix(project)) await store.existingFile(project.id, 'mixes', project.processedMix!.file);
     return jobs.start(project.id, project.revision, 'export', async (job, signal, update) => {
       const directory = path.join(jobs.folder, job.id); await mkdir(directory, {recursive: true});
       await atomicJson(path.join(directory, 'snapshot.json'), project);
-      const assets = Object.fromEntries(project.assets.map(a => [a.file, `${mediaOrigin}/api/projects/${project.id}/assets/${a.id}?cap=${token}`]));
+      const assets = Object.fromEntries([...project.assets, ...project.fonts, ...(currentProcessedMix(project) ? [project.processedMix!] : [])].map(a => [a.file, `${mediaOrigin}/api/projects/${project.id}/assets/${a.id}?cap=${token}`]));
       await update('Preparing video');
       bundlePromise ??= bundle({entryPoint: path.resolve('apps/api/remotion.tsx'), publicDir: null,
         outDir: path.resolve('.cache/editor-bundle')}).catch(error => {bundlePromise = undefined; throw error;});
@@ -201,8 +216,11 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
           outputLocation: partial, concurrency: 2, cancelSignal: cancellation.cancelSignal,
           onProgress: ({progress}) => {void update('Rendering MP4', progress).catch(() => {});}});
         if (signal.aborted) throw new Error('Cancelled');
+        const encodedAudio = project.audioProcessing?.normalization ? await measureLoudness(partial, project, signal) : undefined;
+        if (encodedAudio) validateLoudness(encodedAudio, project, true);
+        if (signal.aborted) throw new Error('Cancelled');
         await rename(partial, path.join(directory, 'video.mp4'));
-        return {frames: durationFrames(project)};
+        return {frames: durationFrames(project), encodedAudio};
       } finally {signal.removeEventListener('abort', cancellation.cancel); await unlink(partial).catch(() => {});}
     });
   });
@@ -212,7 +230,7 @@ export async function createApp(options: {root?: string; token?: string; mediaOr
   app.get<{Params: {id: string}}>('/api/jobs/:id/result', async (request, reply) => {
     const job = jobs.get(identity.parse(request.params.id));
     if (job.state !== 'succeeded') throw new HttpError(409, 'Result is not ready');
-    if (job.kind === 'alignment') return job.result;
+    if (job.kind !== 'export') return job.result;
     reply.header('Content-Disposition', 'attachment; filename="lyrics-video.mp4"').type('video/mp4');
     return reply.send(createReadStream(path.join(jobs.folder, job.id, 'video.mp4')));
   });

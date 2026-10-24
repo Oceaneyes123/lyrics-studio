@@ -575,8 +575,9 @@ label {
   font-size:9px;
 }
 .track-label input {width:100%; min-width:0; height:22px; padding:2px 4px; font-size:11px;}
-.track-controls {display:flex; gap:2px; margin-top:3px;}
-.track-controls button {min-width:16px; height:20px; padding:1px 3px; font-size:10px;}
+.track-controls {display:flex; gap:1px; margin-top:3px;}
+.track-controls button {min-width:14px; height:20px; padding:1px 2px; font-size:10px;}
+.mix-track {padding:10px 0; border-bottom:1px solid #dbe1e9;}
 .track-controls button[aria-pressed=true] {background:#6654c7; color:white;}
 .track.locked .track-lane {opacity:.65;}
 .selection-rectangle {pointer-events:none; z-index:100; border:1px solid #6654c7; background:#6654c733;}
@@ -868,3 +869,31 @@ label {
 .repair-media:focus-within {
   outline:2px solid #9b8ce5;
 }
+.word-wave-scroll {overflow-x: auto; border: 1px solid #aebbd0; margin-block: 8px;}
+.word-wave-lane {position: relative; height: 90px; min-width: 100%; overflow: hidden; background: #e8edf2;}
+.word-wave-span {position: absolute; top: 52px; height: 30px; overflow: hidden; white-space: nowrap; background: #d2caec; border: 1px solid #6654c7; font-size: 11px;}
+.word-boundary {position: absolute; z-index: 1; top: 0; height: 86px; width: 7px; padding: 0; min-width: 0; transform: translateX(-50%); background: #6654c7; opacity: .7; cursor: ew-resize; touch-action: none; border-radius: 0;}
+.word-boundary:focus {outline: 2px solid #111; opacity: 1; z-index: 2;}
+.sync-tools {padding-block: 10px;}
+.keyframe-lane {height: 28px; position: relative; border-bottom: 1px solid #bac4d8;}
+.keyframe-lane button {position: absolute; padding: 0 2px; transform: translateX(-50%); color: #6654c7; background: transparent; border: 0;}
+
+.canvas-stage {min-width:0;width:100%;flex-shrink:0}
+.canvas-toolbar {display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 24px;font-size:12px}
+.canvas-toolbar label {display:flex;align-items:center;gap:4px;margin:0}
+.canvas-toolbar select {width:auto}
+.canvas-viewport {overflow:auto;max-height:460px;min-height:100px;padding:32px;background:#10151c}
+.canvas-project {position:relative;transform-origin:top left;isolation:isolate}
+.canvas-overlay {position:absolute;inset:0;overflow:hidden;touch-action:none}
+.canvas-object {cursor:move;touch-action:none;border:0;box-sizing:border-box}
+.canvas-object:hover {outline:1px solid #b8c8d9}
+.canvas-object.selected {outline:1px solid #86edc6}
+.canvas-object.locked {cursor:default}
+.canvas-object:focus-visible {outline:3px solid #86edc6}
+.canvas-text-editor {padding:10px;background:var(--panel);position:relative;z-index:5}
+.canvas-text-editor textarea {width:100%;min-height:90px}
+.transform-inspector fieldset {border:0;padding:0;min-width:0}
+.canvas-project .moveable-control-box {z-index:50}
+
+.transform-inspector label {display:block;margin:8px 0}
+.transform-inspector input[type=checkbox] {width:auto}

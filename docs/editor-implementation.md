@@ -1,5 +1,7 @@
 # Editor implementation and verification
 
+This is the original MVP evidence snapshot. Current advanced controls, schema compatibility, limits, and verification are documented in [advanced-editor.md](advanced-editor.md).
+
 Session: 2026-10-22 through 2026-10-23, Asia/Manila.
 
 ## Delivered

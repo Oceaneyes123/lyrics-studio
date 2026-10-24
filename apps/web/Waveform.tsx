@@ -1,7 +1,8 @@
 import {useEffect, useRef, useState} from 'react';
 import WaveSurfer from 'wavesurfer.js';
 
-export function Waveform({src, time, seek}: {src: string; time: number; seek: (ms: number) => void}) {
+export function Waveform({src, time, seek, range}: {src: string; time: number; seek: (ms: number) => void;
+  range?: {startMs: number; endMs: number; sourceDurationMs: number}}) {
   const container = useRef<HTMLDivElement>(null), wave = useRef<WaveSurfer | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -14,8 +15,9 @@ export function Waveform({src, time, seek}: {src: string; time: number; seek: (m
   }, [src]);
   useEffect(() => {if (wave.current?.getDuration()) wave.current.setTime(time / 1000);}, [time]);
   return <div className="waveform" onClick={e => {const rect = e.currentTarget.getBoundingClientRect();
-    const duration = wave.current?.getDuration(); if (duration) seek((e.clientX - rect.left) / rect.width * duration * 1000);}}>
-    <div ref={container} />{error && <small>{error}</small>}
+    const duration = wave.current?.getDuration(); if (duration) seek(range ? range.startMs + (e.clientX - rect.left) / rect.width * (range.endMs - range.startMs) : (e.clientX - rect.left) / rect.width * duration * 1000);}}>
+    <div ref={container} style={range ? {width: `${range.sourceDurationMs / (range.endMs - range.startMs) * 100}%`,
+      marginLeft: `${-range.startMs / (range.endMs - range.startMs) * 100}%`} : undefined} />{error && <small>{error}</small>}
   </div>;
 }
 

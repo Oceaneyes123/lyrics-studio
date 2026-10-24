@@ -18,6 +18,7 @@ try {
   page.on('dialog', dialog => dialog.accept());
   await page.goto('http://127.0.0.1:5173/');
   await page.getByRole('button', {name: 'Create a lyric video', exact: true}).click();
+  const verificationName = `Editor verification ${crypto.randomUUID()}`;
   const lyricsText = (await readFile('music/lyrics.txt', 'utf8')).replace(/\r\n/g, '\n');
   await page.getByLabel('Paste lyrics', {exact: true}).fill(lyricsText);
   await page.getByRole('button', {name: 'Save', exact: true}).click();
@@ -25,7 +26,7 @@ try {
   await page.getByLabel('Upload media', {exact: true}).setInputFiles(path.resolve('music/test.wav'));
   await page.getByText('test.wav imported.', {exact: false}).waitFor();
   assert.equal(await page.getByLabel('Paste lyrics', {exact: true}).inputValue(), lyricsText);
-  await page.getByLabel('Project name', {exact: true}).fill('Editor verification');
+  await page.getByLabel('Project name', {exact: true}).fill(verificationName);
   await page.getByLabel('Paste lyrics', {exact: true}).fill(lyricsText);
   await page.getByRole('button', {name: 'Align to song', exact: true}).click();
   await page.getByRole('button', {name: 'Apply matches', exact: true}).waitFor({timeout: 600000});
@@ -34,7 +35,7 @@ try {
   await page.locator('.lyric-row').first().click();
   await page.getByRole('button', {name: 'Mark reviewed', exact: true}).click();
   const timing = page.getByLabel('Line start (s)', {exact: true});
-  await timing.fill('3'); await timing.press('Tab');
+  await timing.fill('2'); await timing.press('Tab');
   await page.getByLabel('Style scope', {exact: true}).selectOption('line');
   await page.getByLabel('Font size', {exact: true}).fill('64');
   await page.getByLabel('Font size', {exact: true}).press('Tab');
@@ -44,7 +45,7 @@ try {
   const selectedId = await page.getByLabel('Open project', {exact: true}).inputValue();
   const loaded = await page.request.get(`http://127.0.0.1:5173/api/projects/${selectedId}`, {headers: {'x-local-token': session.token}}).then(r => r.json());
   assert(lines(loaded.project).filter(line => line.startMs !== null).length >= 26);
-  assert.equal(lines(loaded.project)[0].startMs, 3000);
+  assert.equal(lines(loaded.project)[0].startMs, 2000);
   assert.equal(lines(loaded.project)[0].status, 'manual');
   assert.equal(lines(loaded.project)[0].style.fontSize, 64);
   assert.equal(loaded.project.style.fontSize, 52);
@@ -53,13 +54,13 @@ try {
   const bounds = await clip.boundingBox(); assert(bounds);
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down(); await page.mouse.move(bounds.x + bounds.width / 2 + 18, bounds.y + bounds.height / 2, {steps: 6}); await page.mouse.up();
-  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3.5');
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '2.5');
   await page.getByRole('button', {name: 'Undo', exact: true}).click();
-  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3');
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '2');
   const trimBounds = await clip.boundingBox(); assert(trimBounds);
   await page.mouse.move(trimBounds.x + trimBounds.width - 2, trimBounds.y + trimBounds.height / 2);
   await page.mouse.down(); await page.mouse.move(trimBounds.x + trimBounds.width - 14, trimBounds.y + trimBounds.height / 2, {steps: 5}); await page.mouse.up();
-  assert(Number(await page.getByLabel('Line end (s)', {exact: true}).inputValue()) < 5.42);
+  assert(Number(await page.getByLabel('Line end (s)', {exact: true}).inputValue()) < 2 + before / 1000);
   await page.getByRole('button', {name: 'Undo', exact: true}).click();
   const wordEnd = page.getByLabel('Word 1 end (s)', {exact: true});
   await wordEnd.fill('0.7'); await wordEnd.press('Tab');
@@ -68,22 +69,27 @@ try {
   await page.getByRole('button', {name: 'Redo', exact: true}).click();
   await page.locator('.lyric-row').first().click();
   await page.screenshot({path: 'artifacts/editor/workbench.png', fullPage: true});
+  await page.getByRole('button', {name: 'Save', exact: true}).click();
+  await page.getByRole('status').filter({hasText: /^Saved$/}).waitFor();
+  const corrected = await page.request.get(`http://127.0.0.1:5173/api/projects/${selectedId}`, {headers: {'x-local-token': session.token}}).then(r => r.json());
+  assert.equal(lines(corrected.project)[0].words[0].endMs, 700);
   // Export a short immutable snapshot while keeping the full saved song project.
-  const snapshot = structuredClone(loaded.project);
+  const snapshot = structuredClone(corrected.project);
   snapshot.name = 'Editor export verification'; snapshot.durationMs = 10000;
   audioClips(snapshot)[0].durationMs = 10000;
   snapshot.clips = snapshot.clips.filter(c => c.startMs + c.durationMs <= 10000);
   const temporary = await page.request.post('http://127.0.0.1:5173/api/projects', {headers: {'x-local-token': session.token}}).then(r => r.json());
+  snapshot.name = `Editor export verification ${temporary.id}`;
   // Import through the API rather than forging an asset manifest.
   const imported = await page.request.post(`http://127.0.0.1:5173/api/projects/${temporary.id}/assets`, {
     headers: {'x-local-token': session.token}, multipart: {file: {name: 'test.wav', mimeType: 'audio/wav', buffer: await readFile('music/test.wav')}}
   }).then(r => r.json());
-  Object.assign(snapshot, {id: temporary.id, revision: imported.project.revision, assets: imported.project.assets,
+  Object.assign(snapshot, {id: temporary.id, revision: imported.project.revision, assets: imported.project.assets, alignmentSourceClipId: imported.project.alignmentSourceClipId,
     clips: [...snapshot.clips.filter(c => c.kind !== 'audio'), {...audioClips(imported.project)[0], trackId: snapshot.tracks.find(t => t.kind === 'audio').id, durationMs: 10000}]});
   const saved = await page.request.put(`http://127.0.0.1:5173/api/projects/${temporary.id}`, {headers: {'x-local-token': session.token}, data: snapshot});
   assert.equal(saved.status(), 200, await saved.text());
   await page.reload();
-  await page.getByRole('button', {name: 'Editor export verification Open', exact: true}).click();
+  await page.getByRole('button', {name: `${snapshot.name} Open`, exact: true}).click();
   await page.getByRole('button', {name: 'Export MP4', exact: true}).click();
   const warning = page.getByLabel('Export with unreviewed lyrics', {exact: true});
   if (await warning.count()) await warning.check();
@@ -97,14 +103,15 @@ try {
   assert.equal(probe.streams.find(s => s.codec_type === 'video').codec_name, 'h264');
   assert.equal(probe.streams.find(s => s.codec_type === 'audio').codec_name, 'aac');
   await page.reload();
-  await page.getByRole('button', {name: 'Editor verification Open', exact: true}).click();
+  await page.getByRole('button', {name: `${verificationName} Open`, exact: true}).click();
   await page.locator('.lyric-row').first().click();
-  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '3');
+  assert.equal(await page.getByLabel('Line start (s)', {exact: true}).inputValue(), '2');
+  assert.equal(await page.getByLabel('Word 1 end (s)', {exact: true}).inputValue(), '0.7');
   await page.setViewportSize({width: 800, height: 1000});
   await page.screenshot({path: 'artifacts/editor/narrow.png', fullPage: true});
   assert.deepEqual(errors, []);
-  report = {projectId: selectedId, importedWav: true, pastedLyrics: true, timedLines: 26, totalLines: 28,
-    manualStartMs: 3000, originalLineDurationMs: before, saveReopen: true, undoRedo: true, pointerDrag: true, edgeTrim: true, wordTimingEdit: true, perLineStyle: true,
+  report = {projectId: selectedId, importedWav: true, pastedLyrics: true, timedLines: lines(loaded.project).filter(line => line.startMs !== null).length, totalLines: lines(loaded.project).length,
+    manualStartMs: 2000, originalLineDurationMs: before, saveReopen: true, undoRedo: true, pointerDrag: true, edgeTrim: true, wordTimingEdit: true, perLineStyle: true,
     exportedDurationSeconds: Number(probe.format.duration), codecs: probe.streams.map(s => s.codec_name), browserErrors: errors};
   console.log(JSON.stringify(report, null, 2));
   await writeFile('artifacts/editor/verification.json', JSON.stringify(report, null, 2));

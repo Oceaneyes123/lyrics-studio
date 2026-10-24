@@ -6,11 +6,12 @@ import type {Asset} from '../../packages/project-model/model';
 import {useEditor, type Selection} from './store';
 import {Waveform} from './Waveform';
 
-export function Timeline({project, frame, selection, selectedIds, select, setSelectedIds, seek, attempt, audioUrl, addBackground}: {
+export function Timeline({project, frame, selection, selectedIds, select, setSelectedIds, seek, attempt, audioUrl, addBackground, addAudio}: {
   project: Project; frame: number; selection: Selection; selectedIds: string[];
   select: (selection: Selection, mode?: 'single' | 'toggle' | 'range') => void; setSelectedIds: (ids: string[]) => void;
   seek: (ms: number) => void; attempt: (fn: () => void) => void; audioUrl?: string;
   addBackground: (asset: Asset, startMs: number, layer: number) => void;
+  addAudio: (asset: Asset, startMs: number, trackId?: string) => void;
 }) {
   const [zoom, setZoom] = useState(36), [snapping, setSnapping] = useState(true);
   const [ghost, setGhost] = useState<{ids: string[]; delta: number; edge?: 'left' | 'right'} | null>(null);
@@ -20,7 +21,7 @@ export function Timeline({project, frame, selection, selectedIds, select, setSel
   const length = Math.max(700, project.durationMs / 1000 * zoom);
   const visuals = project.tracks.filter(track => track.kind === 'visual');
   const identity = (clip: Clip): Selection => ({id: clip.kind === 'lyric' ? clip.sourceLineId : clip.id, kind: clip.kind === 'visual' ? 'video' : clip.kind});
-  const label = (clip: Clip) => clip.kind === 'lyric' ? clip.text : project.assets.find(asset => asset.id === clip.assetId)?.name ?? 'Media';
+  const label = (clip: Clip) => clip.kind === 'lyric' || clip.kind === 'text' ? clip.text : project.assets.find(asset => asset.id === clip.assetId)?.name ?? 'Media';
   const commit = (next: Project) => useEditor.getState().commit(next);
   function copy(cut = false) {
     clipboard.current = copyClips(project, selectedIds);
@@ -79,9 +80,13 @@ export function Timeline({project, frame, selection, selectedIds, select, setSel
           const changed = draft.clips.find(c => c.id === clip.id)!;
           if (changed.kind === 'lyric') updateLine(draft, changed.sourceLineId, line => timeLine(line,
             clip.startMs + (edge === 'left' ? delta : 0), clip.startMs + clip.durationMs + (edge === 'right' ? delta : 0)));
-          else {
+          else if (changed.kind === 'text') {
+            changed.startMs += edge === 'left' ? delta : 0; changed.durationMs += edge === 'left' ? -delta : delta;
+            if (edge === 'left' && changed.animation) changed.animation.originMs += delta;
+          } else {
             changed.startMs += edge === 'left' ? delta : 0; changed.durationMs += edge === 'left' ? -delta : delta;
             if (edge === 'left' && draft.assets.find(asset => asset.id === changed.assetId)?.kind !== 'image') changed.sourceInMs += delta;
+            if (edge === 'left' && changed.animation) changed.animation.originMs += delta;
             changed.fadeInMs = Math.min(changed.fadeInMs, changed.durationMs); changed.fadeOutMs = Math.min(changed.fadeOutMs, changed.durationMs);
           }
         }));
@@ -109,12 +114,12 @@ export function Timeline({project, frame, selection, selectedIds, select, setSel
     }, {once: true, signal: controller.signal});
     document.addEventListener('pointercancel', () => {controller.abort(); setRectangle(null);}, {once: true, signal: controller.signal});
   }
-  function drop(event: React.DragEvent, layer: number) {
+  function drop(event: React.DragEvent, layer: number, trackId?: string) {
     event.preventDefault();
     const asset = project.assets.find(a => a.id === event.dataTransfer.getData('application/x-lyrics-studio-asset'));
-    if (!asset || asset.kind === 'audio') return;
+    if (!asset || (asset.kind === 'audio' ? !trackId : layer < 0)) return;
     const start = snapTimeline((event.clientX - event.currentTarget.getBoundingClientRect().left) * 1000 / zoom, project, zoom, snapping && !event.altKey, frame * 1000 / project.fps);
-    attempt(() => addBackground(asset, start, layer));
+    attempt(() => asset.kind === 'audio' ? addAudio(asset, start, trackId) : addBackground(asset, start, layer));
   }
   return <section className="timeline-panel panel" aria-label="Timeline">
     <div className="timeline-toolbar"><h2>Timeline</h2><span>{selectedIds.length} selected</span>
@@ -140,14 +145,15 @@ export function Timeline({project, frame, selection, selectedIds, select, setSel
           <div className="track-label"><input aria-label={`Track name ${track.id}`} value={track.name} onChange={e => attempt(() => useEditor.getState().edit(d => {d.tracks.find(t => t.id === track.id)!.name = e.target.value;}))} />
             <div className="track-controls"><button aria-label={`${track.locked ? 'Unlock' : 'Lock'} ${track.name}`} aria-pressed={track.locked} onClick={() => attempt(() => useEditor.getState().edit(d => {d.tracks.find(t => t.id === track.id)!.locked = !track.locked;}))}>L</button>
               {track.kind !== 'lyrics' && <button aria-label={`Mute ${track.name}`} aria-pressed={track.muted} onClick={() => attempt(() => useEditor.getState().edit(d => {d.tracks.find(t => t.id === track.id)!.muted = !track.muted;}))}>M</button>}
+              {track.kind !== 'lyrics' && <button aria-label={`Solo ${track.name}`} aria-pressed={track.solo} onClick={() => attempt(() => useEditor.getState().edit(d => {d.tracks.find(t => t.id === track.id)!.solo = !track.solo;}))}>S</button>}
               {track.kind !== 'audio' && <button aria-label={`Hide ${track.name}`} aria-pressed={!track.visible} onClick={() => attempt(() => useEditor.getState().edit(d => {d.tracks.find(t => t.id === track.id)!.visible = !track.visible;}))}>V</button>}
               <button aria-label={`Move ${track.name} up`} disabled={index === project.tracks.length - 1} onClick={() => attempt(() => useEditor.getState().edit(d => {[d.tracks[index], d.tracks[index + 1]] = [d.tracks[index + 1], d.tracks[index]];}))}>↑</button>
               <button aria-label={`Move ${track.name} down`} disabled={!index} onClick={() => attempt(() => useEditor.getState().edit(d => {[d.tracks[index], d.tracks[index - 1]] = [d.tracks[index - 1], d.tracks[index]];}))}>↓</button>
               <button aria-label={`Delete track ${track.name}`} onClick={() => attempt(() => useEditor.getState().edit(d => {d.clips = d.clips.filter(c => c.trackId !== track.id); d.tracks = d.tracks.filter(t => t.id !== track.id);}))}>×</button>
             </div></div>
           <div className="track-lane" style={{width: length}} data-track-id={track.id} data-video-layer={track.kind === 'visual' ? visualIndex : undefined}
-            onPointerDown={rectangleSelect} onDragOver={e => track.kind === 'visual' && e.preventDefault()} onDrop={e => track.kind === 'visual' && drop(e, visualIndex)}>
-            {project.clips.filter(c => c.trackId === track.id).map(clip => {
+            onPointerDown={rectangleSelect} onDragOver={e => track.kind !== 'lyrics' && e.preventDefault()} onDrop={e => track.kind !== 'lyrics' && drop(e, visualIndex, track.kind === 'audio' ? track.id : undefined)}>
+            {project.clips.filter(c => c.trackId === track.id).sort((a, b) => a.startMs - b.startMs).map(clip => {
               const shown = ghost?.ids.includes(clip.id) ? ghost : null, start = clip.startMs + (shown && shown.edge !== 'right' ? shown.delta : 0);
               const duration = clip.durationMs + (shown?.edge ? shown.delta * (shown.edge === 'left' ? -1 : 1) : 0);
               return <div key={clip.id} data-clip-id={clip.id} role="button" tabIndex={0} aria-label={`${track.name}: ${label(clip)}`} aria-pressed={selectedIds.includes(clip.id)}
@@ -165,6 +171,13 @@ export function Timeline({project, frame, selection, selectedIds, select, setSel
           </div>
         </div>;
       })}
+      {project.clips.filter(c => selectedIds.includes(c.id) && c.animation).map(clip => <div className="keyframe-lane" key={clip.id} style={{marginLeft: 130, width: length}}>
+        {Object.entries({...clip.animation!.curves, ...clip.animation!.colors}).flatMap(([property, keys]) => keys.map(key => {
+          const time = key.timeMs - clip.animation!.originMs;
+          return time >= 0 && time < clip.durationMs ? <button key={`${property}-${key.timeMs}`} aria-label={`${property} keyframe at ${key.timeMs} ms`}
+            style={{left: (clip.startMs + time) / 1000 * zoom}} onClick={() => seek(clip.startMs + time)}>◆</button> : null;
+        }))}
+      </div>)}
       <div className="playhead" style={{left: 130 + frame / project.fps * zoom}} />
     </div></div>
     {rectangle && <div className="selection-rectangle" style={{position: 'fixed', left: rectangle.x, top: rectangle.y, width: rectangle.width, height: rectangle.height}} />}

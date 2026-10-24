@@ -1,6 +1,6 @@
 # Advanced Lyrics Studio implementation plan
 
-Date: 2026-10-23. Status: planning complete; implementation not started.
+Date: 2026-10-24. Status: complete. All 36 packages and final regression/performance checks passed.
 
 This extends the completed MVP with the six requested feature areas. The original brief and completed 32-item MVP checklist remain intact. Removed M0.2/M0.3/M0.5 tasks are not restored. This plan adds feature-specific regression checks, not an independent singing-quality or listening-approval project.
 
@@ -43,7 +43,7 @@ Existing uncommitted code/docs are prior authorized work. Preserve them. Work in
 
 ### One canonical timeline
 
-The next schema version starts at 2. Final persisted fields are added only in the phase that needs them; bump the schema when an older writer could discard new data. Do not prepopulate future animation/effect/font fields during A1.
+The unified architecture began at schema 2. The final advanced writer uses schema 3, with explicit schema-1/schema-2 read migration and version-specific permanent backups. Fields were added in their implementation phases. The version-3 guard prevents older writers from recovering obsolete backups and losing advanced data.
 
 | Record | Fields and ownership |
 |---|---|
@@ -65,13 +65,13 @@ Global unique clip IDs must accommodate existing lyric IDs such as `line-3`, not
 ### Read, save, recovery, rollback
 
 1. Detect stored schema version before running its validator. Keep strict V1 and V2 validators separate and reject unsupported future versions.
-2. Read V1 → validate V1 → deterministically migrate in memory → validate V2. Reading alone must not rewrite files or revisions.
+2. Read V1 or V2, validate its supported data, deterministically migrate in memory, and validate schema 3. Reading alone must not rewrite files or revisions.
 3. Map the existing audio row, visual layers, and lyric row into tracks. Copy source offsets, transforms, opacity, GIF references, styles, word times, source fragments, review status, untimed source text, and all asset hashes unchanged.
 4. On the first explicit/autosave of an edited migrated project, preserve an atomic, version-specific pre-migration JSON backup before replacing the main document. Leave source media untouched. Do not treat migration-on-read as a dirty user edit.
 5. Preserve current revision-conflict behavior. A failed migration/save leaves the original JSON readable by the old app. A migrated project keeps an immutable V1 backup even after ordinary `.bak` rotation.
 6. Recovery validates the actual backup version and migrates only supported data. Change the storage guard that currently rejects every version above 1. A future-version main file must never silently fall back to older data.
 7. Immutable export snapshots are version-dispatched. Do not rewrite historical snapshots in place or mutate an export's asset set while it renders.
-8. Rollback to the old application requires restoring the preserved V1 JSON. V2-only edits are not backported or represented as losslessly downgradable. Keep the V2 file separately when restoring an earlier copy.
+8. Rollback requires restoring the preserved version-specific JSON. Advanced edits are not represented as losslessly downgradable. Keep the current schema-3 JSON separately before restoring an earlier copy.
 
 The legacy proof fixtures stay V1 behind an explicit adapter/renderer branch. Do not send V2 projects through `parseProofProject`, whose global lyric-overlap and version assumptions would reject valid tracks.
 
@@ -159,7 +159,7 @@ Use one documented wrapper/evaluation order: base layout → animated transform 
 
 ## 8. Actionable backlog
 
-All new items below are planned, not implemented. The completed MVP checklist remains separate.
+Checkboxes below record verified delivery. Unchecked items remain planned or in progress. The completed MVP checklist remains separate.
 
 ### A0 — Baseline and migration fixtures (Priority 1)
 
@@ -172,68 +172,68 @@ Exit: reproducible before-state and explicit invariants; no production document 
 ### A1 — Unified timeline (Priority 1; depends on A0)
 
 - [x] A1.1 Implement strict V2 discriminated track/clip/source schemas, deterministic V1 migration, version-dispatched read/recovery, and persistent pre-migration backup. Add pure migration and failed-save tests.
-- [ ] A1.2 Migrate commands, imports, alignment adapters, render input, and immutable export snapshots to one canonical model. Keep proof V1 isolated; remove duplicated live timeline representations.
-- [ ] A1.3 Render track rows and all active visual/lyric tracks in saved order; implement create/rename/reorder/delete, lock, mute, and visibility controls with numeric/keyboard alternatives.
-- [ ] A1.4 Implement selected-ID sets, primary selection, range/toggle/rectangle selection, compatible batch inspector, and atomic shared-delta movement. Guard locked members in the shared commands.
-- [ ] A1.5 Add flat clip groups, ungroup/individual edit, track-scoped union-interval ripple delete, and same-project cut/copy/paste with regenerated IDs and single-step history.
-- [ ] A1.6 Verify clipboard project scoping, immutable asset reuse, undo behavior, and existing edit/save/reopen/export/GIF/layer journeys on migrated projects. Add a regression proving foreign-project clipboard references cannot be pasted.
+- [x] A1.2 Migrate commands, imports, alignment adapters, render input, and immutable export snapshots to one canonical model. Keep proof V1 isolated; remove duplicated live timeline representations.
+- [x] A1.3 Render track rows and all active visual/lyric tracks in saved order; implement create/rename/reorder/delete, lock, mute, and visibility controls with numeric/keyboard alternatives.
+- [x] A1.4 Implement selected-ID sets, primary selection, range/toggle/rectangle selection, compatible batch inspector, and atomic shared-delta movement. Guard locked members in the shared commands.
+- [x] A1.5 Add flat clip groups, ungroup/individual edit, track-scoped union-interval ripple delete, and same-project cut/copy/paste with regenerated IDs and single-step history.
+- [x] A1.6 Verify clipboard project scoping, immutable asset reuse, undo behavior, and existing edit/save/reopen/export/GIF/layer journeys on migrated projects. Add a regression proving foreign-project clipboard references cannot be pasted.
 
 Exit: representative V1 projects render equivalently after migration; interrupted/failed saves preserve originals; no command leaves partial group or multi-selection changes.
 
 ### A2 — Audio mixing (Priority 1; depends on A1)
 
-- [ ] A2.1 Permit concurrent audio tracks/clips; implement additive imports, track/clip gain and mute, track solo, master gain, and clip audio fade envelopes in saved data and inspector.
-- [ ] A2.2 Implement shared preview/export mixing, source trims and fade evaluation; verify Web Audio amplification instead of assuming native element gain above unity works.
-- [ ] A2.3 Add explicitly enabled embedded video audio, preserving normal video trim/split/move behavior and preventing duplicate sound. Include it in track mute/solo.
-- [ ] A2.4 Introduce explicit lyric-reference audio binding and job time mapping; allow additional music/SFX without breaking alignment. Reject changed reference arrangements, not unrelated mix edits.
-- [ ] A2.5 Add synthetic-tone preview/export checks for overlap, levels, mute/solo, fades, video audio, and cancellation. Persist/reopen mixer settings and record clipping/headroom limitations.
+- [x] A2.1 Permit concurrent audio tracks/clips; implement additive imports, track/clip gain and mute, track solo, master gain, and clip audio fade envelopes in saved data and inspector.
+- [x] A2.2 Implement shared preview/export mixing, source trims and fade evaluation; verify Web Audio amplification instead of assuming native element gain above unity works.
+- [x] A2.3 Add explicitly enabled embedded video audio, preserving normal video trim/split/move behavior and preventing duplicate sound. Include it in track mute/solo.
+- [x] A2.4 Introduce explicit lyric-reference audio binding and job time mapping; allow additional music/SFX without breaking alignment. Reject changed reference arrangements, not unrelated mix edits.
+- [x] A2.5 Add synthetic-tone preview/export checks for overlap, levels, mute/solo, fades, video audio, and cancellation. Persist/reopen mixer settings and record clipping/headroom limitations.
 
 Exit: two known tone sources are independently measurable in rendered output; mute/solo/fades/source offsets match preview semantics; the designated song still aligns with an additional music/SFX track.
 
 ### A3 — Lyric synchronization editor (Priority 1; depends on A1/A2)
 
-- [ ] A3.1 Introduce stable source/token occurrence identities and field-level correction provenance. Migrate manual lines conservatively and preserve fragments, copied instances, styles, and unchanged tokens.
-- [ ] A3.2 Implement conflict-aware rerun merging: protect manual starts/ends even when edits occur while a job runs; retain explicit full replacement and one-step undo.
-- [ ] A3.3 Add zoomable selected-line waveform word handles and gap visualization, reusing source waveform caching/time conversion. Include keyboard/numeric access and locked-track guards.
-- [ ] A3.4 Add selected-line looping and preview-only playback rate using installed Player features; test half-open boundary conversion, selection changes, and unchanged export timing.
-- [ ] A3.5 Add armed line tap-to-sync, authoritative frame sampling, pending review, undo-last/finish/cancel, and one history transaction; preserve unsynchronized source text.
-- [ ] A3.6 Verify the full workflow: multi-audio project → tap line starts → loop/slow preview → drag word boundary → rerun alignment → retain correction → save/reopen → export.
+- [x] A3.1 Introduce stable source/token occurrence identities and field-level correction provenance. Migrate manual lines conservatively and preserve fragments, copied instances, styles, and unchanged tokens.
+- [x] A3.2 Implement conflict-aware rerun merging: protect manual starts/ends even when edits occur while a job runs; retain explicit full replacement and one-step undo.
+- [x] A3.3 Add zoomable selected-line waveform word handles and gap visualization, reusing source waveform caching/time conversion. Include keyboard/numeric access and locked-track guards.
+- [x] A3.4 Add selected-line looping and preview-only playback rate using installed Player features; test half-open boundary conversion, selection changes, and unchanged export timing.
+- [x] A3.5 Add armed line tap-to-sync, authoritative frame sampling, pending review, undo-last/finish/cancel, and one history transaction; preserve unsynchronized source text.
+- [x] A3.6 Verify the full workflow: multi-audio project → tap line starts → loop/slow preview → drag word boundary → rerun alignment → retain correction → save/reopen → export.
 
 Exit: each manual field remains intact after rerun; valid word handles retain gaps/text; looping/speed/tapping do not introduce an independent clock or silently alter media speed.
 
 ### A4 — Keyframes (Priority 2; depends on A1)
 
-- [ ] A4.1 Add typed curves, origin/time rules, easing validation, FPS conversion, and pure deterministic sampling using installed Remotion interpolation/easing.
-- [ ] A4.2 Add inspector and timeline controls for position/rotation/scale/opacity keyframes, keyboard access, reset, and single-step undo.
-- [ ] A4.3 Preserve motion through trim/split/move/ripple/copy and resolve static/animated values consistently; persist/migrate new feature data safely.
-- [ ] A4.4 Compare preview/render frames at keys, midpoints, discontinuities, trim/split boundaries, and multiple FPS settings; verify random seeking reproduces the same output.
+- [x] A4.1 Add typed curves, origin/time rules, easing validation, FPS conversion, and pure deterministic sampling using installed Remotion interpolation/easing.
+- [x] A4.2 Add inspector and timeline controls for position/rotation/scale/opacity keyframes, keyboard access, reset, and single-step undo.
+- [x] A4.3 Preserve motion through trim/split/move/ripple/copy and resolve static/animated values consistently; persist/migrate new feature data safely.
+- [x] A4.4 Compare preview/render frames at keys, midpoints, discontinuities, trim/split boundaries, and multiple FPS settings; verify random seeking reproduces the same output.
 
 Exit: sampled property values and representative pixels agree; no wall-clock-driven animation path exists.
 
 ### A5 — Rich text and templates (Priority 2; depends on A3/A4)
 
-- [ ] A5.1 Add validated local font assets, protected serving, FontFace readiness in Player/renderer, versioned font references, and missing-font repair/errors.
-- [ ] A5.2 Implement versioned local save/apply/rename/delete style presets with copied values and explicit font dependencies; existing projects stay unchanged after preset edits.
-- [ ] A5.3 Add word emphasis and lyric entrance/exit controls using shared property curves; expose supported lyric properties without a second animation engine.
-- [ ] A5.4 Add timed line reveals/accumulation and reusable karaoke templates, preserving actual source/token timings and multiline layout.
-- [ ] A5.5 Verify imported-font shaping/wrapping/Unicode, template edits/undo, missing fonts, save/reopen, and representative portrait/landscape preview/export frames.
+- [x] A5.1 Add validated local font assets, protected serving, FontFace readiness in Player/renderer, versioned font references, and missing-font repair/errors.
+- [x] A5.2 Implement versioned local save/apply/rename/delete style presets with copied values and explicit font dependencies; existing projects stay unchanged after preset edits.
+- [x] A5.3 Add word emphasis and lyric entrance/exit controls using shared property curves; expose supported lyric properties without a second animation engine.
+- [x] A5.4 Add timed line reveals/accumulation and reusable karaoke templates, preserving actual source/token timings and multiline layout.
+- [x] A5.5 Verify imported-font shaping/wrapping/Unicode, template edits/undo, missing fonts, save/reopen, and representative portrait/landscape preview/export frames.
 
 Exit: user imports a font, saves/applies a template, edits timing, and exports the same shaped/animated text seen in preview.
 
 ### A6 — Transitions and effects (Priority 2; depends on A4/A5)
 
-- [ ] A6.1 Add validated transition pairs and inspector controls for slide/zoom/wipe/blur; map dissolve to the existing crossfade implementation.
-- [ ] A6.2 Add bounded color correction/filter controls and rectangle/ellipse masks with reset, persistence, history, and compatible batch editing.
-- [ ] A6.3 Add background blur and enforce wrapper/effect order with keyframes, layer opacity, GIF/video playback, and lyric masking kept independent.
-- [ ] A6.4 Verify adjacent pair edits, invalid/deleted partners, random seeking, multi-layer interactions, portrait/landscape pixels, and export cost; set measured effect caps.
+- [x] A6.1 Add validated transition pairs and inspector controls for slide/zoom/wipe/blur; map dissolve to the existing crossfade implementation.
+- [x] A6.2 Add bounded color correction/filter controls and rectangle/ellipse masks with reset, persistence, history, and compatible batch editing.
+- [x] A6.3 Add background blur and enforce wrapper/effect order with keyframes, layer opacity, GIF/video playback, and lyric masking kept independent.
+- [x] A6.4 Verify adjacent pair edits, invalid/deleted partners, random seeking, multi-layer interactions, portrait/landscape pixels, and export cost; set measured effect caps.
 
 Exit: effects are inspector-adjustable, deterministic, and preserved through edit/save/export; transition errors cannot silently shorten/extend media.
 
 ### A7 — Ducking and normalization (Later; depends on A2)
 
-- [ ] A7.1 Implement cached deterministic sidechain analysis/envelopes with configurable trigger/targets, threshold/reduction/attack/release, cancellation, and invalidation.
-- [ ] A7.2 Implement analyzed final-mix normalization using installed FFmpeg capabilities, configured LUFS/true-peak targets, measured encoded output, and preserved source media.
-- [ ] A7.3 Connect derived mix to both preview/export, handle stale/failed/cancelled analysis, prevent double audio, and verify silence/ducking/levels/source edits with generated fixtures.
+- [x] A7.1 Implement cached deterministic sidechain analysis/envelopes with configurable trigger/targets, threshold/reduction/attack/release, cancellation, and invalidation.
+- [x] A7.2 Implement analyzed final-mix normalization using installed FFmpeg capabilities, configured LUFS/true-peak targets, measured encoded output, and preserved source media.
+- [x] A7.3 Connect derived mix to both preview/export, handle stale/failed/cancelled analysis, prevent double audio, and verify silence/ducking/levels/source edits with generated fixtures.
 
 Exit: the same processed audio drives preview/export; measured results accompany target claims; no stale processed mix is used after editing.
 
@@ -255,6 +255,6 @@ Browser autoplay restrictions are handled through user-initiated playback; clipb
 
 First release boundary is A0–A3: 20 Priority 1 work packages. A4–A6 contain 13 Priority 2 packages. A7 contains 3 explicitly later packages. Total: 36 new work packages, all unchecked at planning completion. No delivery date is promised before the migration/audio/sync slices are measured.
 
-## 10. Implementation entry point
+## 10. Implementation outcome
 
-Begin A0.1 with existing representative projects and regression fixtures, then implement the pure migration plus storage version dispatch in A1.1. Do not start by rewriting the entire timeline UI or adding an animation dependency. The first reviewable implementation should show an old project loading into the new model without losing timing, layer order, media references, or recoverability.
+All 36 packages have been implemented in dependency order. [Advanced controls and verification](advanced-editor.md) describes usage, compatibility, limits, and runnable checks. Phase reports are under artifacts/advanced/; the current workload measurements are in artifacts/acceptance/performance/report.json. The original brief and completed MVP scope remain intact. Work is local, with no commits, pushes, deployment, or public media upload.

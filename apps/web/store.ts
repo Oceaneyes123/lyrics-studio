@@ -57,4 +57,4 @@ export async function api<T>(route: string, options: RequestInit = {}): Promise<
   if (!response.ok) throw new Error((await response.json().catch(() => ({error: 'Local API unavailable'}))).error);
   return response.json();
 }
-export type Selection = {kind: 'lyric' | 'audio' | 'video'; id: string} | null;
+export type Selection = {kind: 'lyric' | 'audio' | 'video' | 'text'; id: string} | null;

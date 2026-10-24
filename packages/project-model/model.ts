@@ -85,3 +85,8 @@ export function lyricLines(text: string): ProofLine[] {
   return text.split(/\r?\n/).flatMap((line, index) => !line.trim() || /^\s*(#|\[[^\]]+\]\s*$)/.test(line) ? [] :
     [{id: `line-${index + 1}`, text: line, startMs: null, durationMs: null, status: 'unmatched' as const, words: []}]);
 }
+export function lyricTokens(text: string) {
+  const characters = Array.from(text).filter(character => character.trim());
+  const cjk = characters.filter(character => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(character)).length;
+  return text.match(characters.length && cjk / characters.length >= .2 ? /\s*\S\s*/gu : /\s*\S+\s*/gu) ?? [];
+}

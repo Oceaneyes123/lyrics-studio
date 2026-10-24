@@ -24,6 +24,18 @@ try {
   await page.goto(base); await page.getByRole('button', {name: `${legacy.name} Open`, exact: true}).click();
   await expect(page.locator('.track.lyric .timeline-clip')).toHaveCount(2);
   assert.equal(await readFile(file, 'utf8'), original, 'Opening V1 must not rewrite its JSON');
+  await page.getByRole('button', {name: '＋ Lyrics track', exact: true}).click();
+  const second = page.locator('.track.lyric .timeline-clip').nth(1);
+  await second.scrollIntoViewIfNeeded();
+  const secondBounds = await second.boundingBox(), upperLane = await page.locator('.track.lyric .track-lane').first().boundingBox();
+  assert(secondBounds && upperLane);
+  await page.mouse.move(secondBounds.x + 15, secondBounds.y + 15); await page.mouse.down();
+  await page.mouse.move(secondBounds.x + 15, upperLane.y + 20, {steps: 6}); await page.mouse.up();
+  await page.getByLabel('Line start (s)', {exact: true}).fill('1'); await page.getByLabel('Line start (s)', {exact: true}).press('Tab');
+  await page.locator('.ruler').click({position: {x: 72, y: 10}});
+  await expect(page.locator('[data-line-id]:not([data-line-id=""])')).toHaveCount(2);
+  for (let i = 0; i < 3; i++) await page.getByRole('button', {name: 'Undo', exact: true}).click();
+  await expect(page.locator('.track.lyric')).toHaveCount(1);
   const lane = page.locator('.track.lyric .track-lane'); await lane.scrollIntoViewIfNeeded();
   const bounds = await lane.boundingBox(); assert(bounds);
   await page.mouse.move(bounds.x + 1, bounds.y + 1); await page.mouse.down();
@@ -58,7 +70,7 @@ try {
   await expect(page.locator('[data-proof-frame]')).toHaveAttribute('data-line-id', '');
   await page.getByRole('button', {name: 'Hide Lyrics', exact: true}).click();
   await page.getByRole('button', {name: 'Save', exact: true}).click(); await page.getByRole('status').filter({hasText: /^Saved$/}).waitFor();
-  assert.equal(JSON.parse(await readFile(file, 'utf8')).schemaVersion, 2);
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).schemaVersion, 4);
   assert.equal(await readFile(`${file}.v1.bak`, 'utf8'), original);
   await page.reload(); await page.getByRole('button', {name: `${legacy.name} Open`, exact: true}).click();
   await expect(page.locator('.track.lyric .timeline-clip')).toHaveCount(1);

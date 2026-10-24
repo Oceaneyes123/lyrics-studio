@@ -1,19 +1,19 @@
 # Task Plan: Lyrics Studio implementation
 
 ## Goal
-Preserve the completed MVP and plan the six requested advanced editor areas in docs/ADVANCED_IMPLEMENTATION_PLAN.md, prioritizing unified timeline, audio mixing, and lyric synchronization.
+Implement the six advanced editor areas in docs/ADVANCED_IMPLEMENTATION_PLAN.md step by step, prioritizing unified timeline, audio mixing, and lyric synchronization; preserve completed MVP behavior and existing projects.
 
 ## Next Step
-Detailed plan: docs/ADVANCED_IMPLEMENTATION_PLAN.md. Implementation starts at A0.1 (baseline/fixtures), followed by A1.1 (pure migration and storage version dispatch). New backlog: 20 Priority 1, 13 Priority 2, 3 later tasks. No new-feature implementation started. The 32-task MVP remains complete; removed M0.2/M0.3/M0.5 are not restored.
+Complete. All 36 packages and final checks pass. Usage and limits are in docs/advanced-editor.md. The app is running at http://127.0.0.1:5173/. No remaining unchecked advanced tasks; the excluded MVP tasks remain excluded.
 
 ## Current Phase
-Advanced implementation authorized. A0 baseline/fixtures in progress, followed by unified-model migration (A1). Existing code edits from prior authorized work are preserved; no commits or pushes.
+Complete. Existing authorized changes and original media are preserved. No commits, pushes, deployments, or public uploads.
 
 ## Phases
 ### Advanced editor: A0 baseline and fixtures
-- **Status:** in_progress
+- **Status:** complete
 ### Advanced editor: A1–A7 implementation
-- **Status:** pending
+- **Status:** complete
 ### Advanced editor: Detailed planning
 - **Status:** complete
 ### Phase 1: Requirements and discovery

@@ -19,7 +19,7 @@ try {
     assert.equal(request.method(), 'GET');
     const pathname = new URL(request.url()).pathname;
     const json = pathname === '/api/session' ? {token: 'test-token'} : pathname === '/api/projects' ? [first, second] :
-      pathname.endsWith('/jobs') ? [] : {project: first, recovered: false, missing: []};
+      pathname.endsWith('/jobs') || pathname === '/api/presets' ? [] : {project: first, recovered: false, missing: []};
     await route.fulfill({json});
   });
   await page.goto('http://127.0.0.1:5174/');

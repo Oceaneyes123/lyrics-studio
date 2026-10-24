@@ -1,9 +1,33 @@
 # Findings
 
+- Final follow-ups resolved: correction flags survive review-status changes; automatic field changes require renewed review; untimed neighbors do not constrain word handles; direct text edits preserve pending manual token data and unambiguous CJK identities; ordinary V2 backup recovery is tested. Browser font decode occurs before metadata commit, and opted-in videos without audio are treated as silence by processing.
+
+- Final provenance follow-up: correction flags must be respected independently of review status. Space-words-evenly changes status to review but must not unprotect earlier tap/numeric line boundaries. When a rerun changes automatic fields on a partially corrected line, mark it review-required rather than falsely retaining whole-line approval. Add focused regression and update the sync journey to review newly changed automatic fields before export.
+- Font import hardening: browser-decode fonts before committing metadata, since a header-valid but malformed unused font would otherwise make every render fail with no useful identical-original repair. Server now validates FontFace using the already-installed Chromium; malformed-font API regression added. Processing skips opted-in videos with no audio stream instead of failing the graph.
+
+- Final edge-case follow-up after the active benchmark: wordBoundary should skip explicitly untimed neighbors when deriving clamp limits; their stored former boundaries are not timing constraints. Add a focused test. Also explicitly exercise ordinary V2 backup recovery, not just V2 main migration/permanent preservation.
+
+- A7 is functionally verified with synthetic tones: control envelope and measured final mix are shared through one derived source in Player/export. True peak is a ceiling; the example at -20 LUFS measures -14.78 dBTP rather than being forced up to its -2 dBTP ceiling. Cache/settings identity excludes visual edits and includes all contributing audio flags, gains, offsets, fades, duration, FPS, and processing settings.
+
+- A7 implementation design: use durable jobs and content/settings-hashed immutable derived WAV plus metadata under each project's mixes directory. Exact canonical source/mix/settings signature controls staleness; preview and export select the same completed mix and disable original audio contributions. Export rejects missing/stale processing when opted in. Original media stays untouched.
+- Ducking design: analyze the post-track-gain/mute/solo trigger at 48 kHz into 10 ms RMS windows. Save a deterministic attack/release reduction envelope, apply it to chosen targets with a stereo control signal and FFmpeg amultiply, then master gain. This is amplitude sidechain ducking, not vocal isolation. Stream PCM/control files; use filter script files instead of huge command-line expressions.
+- Normalization design: analyze the final float WAV with FFmpeg loudnorm, run measured two-pass normalization, retain before/after metrics, and measure encoded AAC output with explicit LUFS/true-peak tolerance. Silent mixes need explicit handling. Jobs must cancel actual FFmpeg process trees and clean only their own temporary files. Reuse valid cached mixes; reject stale result application after source/settings edits. Bound processing to one hour and 64 distinct input assets initially; document this limit.
+
+- Fonts use a separate 20 MiB import path, content signatures, generated families, FontFace readiness and renderer delay/cancel handling. Missing glyphs may use host fallback; same-host parity does not guarantee portability. Preset dependencies rebind by font hash.
+- Before delivery, bump advanced writer to schema 3 and explicitly migrate schema 2, with a permanent version-2 backup. Strict root validation alone cannot prevent an older writer from recovering an obsolete backup after rejecting new fields.
+
+- Word handles require their own stacking layer above later word labels; separate vertical start/end hit targets at shared boundaries. Corrected removed words and pasted-source occurrences remain saved for review. Explicit replacement clears corrections in one undoable edit. Ambiguous repeated text is not treated as an unambiguous identity match.
+
+- Mixer uses shared Web Audio gain and per-frame envelopes. Captured preview and encoded AAC agree for attenuation and amplification. Hidden picture retains explicitly enabled video sound. Summed gains can clip; master/track controls provide headroom, with no automatic limiter assumed.
+- Installed Player outFrame is inclusive; adapt half-open line intervals to endFrame minus one. Playback speed stays editor state. Alignment merges against current corrections; conflicting candidates retain timing and report a review reason.
+
 ## Advanced implementation evidence
 - Baseline before runtime migration: 50 TypeScript tests, 24 Python tests, lint/typecheck/build pass. Existing build notices remain non-fatal.
 - Added strict V2 timeline model and deterministic pure migration separately from live V1 readers. Eight focused checks cover empty/repeated/untimed/manual-split/GIF-layer fixtures, source/media/style preservation, stable collision remapping, track-local lyric overlap, invalid references, malformed words, and future versions. Live project storage has not been rewritten.
 - Migration must retain non-UUID legacy lyric IDs and untimed style/reason metadata. Track ordering must place visual layers beneath lyrics; same-track lyric overlap remains invalid while independent lyric tracks can overlap.
+- Canonical API/store/UI/renderer integration passes 70 tests and all 48 old-Player versus V2-renderer frame comparisons. Actual group/clipboard/ripple/migration browser journey passes. Shared visual views must sort clips by time inside each track; serialized clip collection order is no longer rendering order.
+- Newly added clips must be selected after committing to Zustand, not inside the edit callback. Otherwise primary selection exists but selected-ID set is empty and Delete becomes a no-op. The background regression now explicitly asserts that deletion removed the dropped clip; layered/GIF/video export pixels pass after the fix.
+- The old waveform CSS is absolutely positioned inside an audio lane. Its new separate timeline location needs a relative wrapper; without it, the waveform intercepts page clicks. The taller timeline also requires adjusted workbench height to keep native drop targets visible.
 
 ## Advanced editor planning (2026-10-23)
 - Created docs/ADVANCED_IMPLEMENTATION_PLAN.md with 36 new packages: A0–A3 contain 20 Priority 1 tasks, A4–A6 contain 13 Priority 2 tasks, and A7 contains 3 later audio-processing tasks. No new feature is marked implemented.

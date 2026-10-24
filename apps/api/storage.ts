@@ -3,6 +3,7 @@ import {copyFile, mkdir, readFile, realpath, rename, readdir, writeFile, unlink,
 import path from 'node:path';
 import {newProject} from '../../packages/project-model/model';
 import {migrateTimeline, parseTimeline} from '../../packages/project-model/timeline';
+import {processedMixSchema} from '../../packages/project-model/audio-processing';
 
 export class HttpError extends Error {
   constructor(public statusCode: number, message: string) {super(message);}
@@ -53,7 +54,7 @@ export class Storage {
     const raw = await readFile(file, 'utf8').catch(() => '');
     let value: unknown;
     try {value = JSON.parse(raw);} catch { /* Try the last-good backup below. */ }
-    if (typeof (value as {schemaVersion?: unknown})?.schemaVersion === 'number' && (value as {schemaVersion: number}).schemaVersion > 2)
+    if (typeof (value as {schemaVersion?: unknown})?.schemaVersion === 'number' && (value as {schemaVersion: number}).schemaVersion > 4)
       throw new HttpError(409, 'Project needs a newer Lyrics Studio version');
     try {return {project: migrateTimeline(value), recovered: false};}
     catch {
@@ -66,12 +67,16 @@ export class Storage {
     return this.locked(next.id, async () => {
       const {project: current, recovered} = await this.loadTimeline(next.id);
       if (next.revision !== current.revision) throw new HttpError(409, 'Project changed on disk. Reopen it before saving; your edits remain in this tab.');
-      if (!importingAssets && JSON.stringify(next.assets) !== JSON.stringify(current.assets)) throw new HttpError(400, 'Assets can only be changed by media import');
+      if (!importingAssets && (JSON.stringify(next.assets) !== JSON.stringify(current.assets) || JSON.stringify(next.fonts) !== JSON.stringify(current.fonts))) throw new HttpError(400, 'Assets can only be changed by media import');
+      if (next.processedMix) {
+        const cached = processedMixSchema.parse(JSON.parse(await readFile(await this.existingFile(next.id, 'mixes', `${next.processedMix.key}.json`), 'utf8')));
+        if (JSON.stringify(cached) !== JSON.stringify(next.processedMix)) throw new HttpError(400, 'Processed mix must come from a completed audio processing job');
+      }
       const file = await this.location(next.id, 'project.json');
       const source = recovered ? `${file}.bak` : file;
       const original = JSON.parse(await readFile(source, 'utf8'));
-      if (original.schemaVersion === 1) {
-        const preserved = `${file}.v1.bak`;
+      if (original.schemaVersion === 1 || original.schemaVersion === 2 || original.schemaVersion === 3) {
+        const preserved = `${file}.v${original.schemaVersion}.bak`;
         const existing = await stat(preserved).catch(error => {if (error.code !== 'ENOENT') throw error; return null;});
         if (!existing) await this.copyDocument(source, preserved);
       }

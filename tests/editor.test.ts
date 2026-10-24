@@ -110,7 +110,7 @@ describe('Editor invariants and history', () => {
     const store = useEditor.getState(); store.open(p);
     store.edit(d => {visualClips(d)[0].trackId = 'track:visual:1'; visualClips(d)[0].startMs = 2000;});
     store.undo(); expect(visualClips(useEditor.getState().project!)[0].trackId).toBe('track:visual:2');
-    store.redo(); expect(visualClips(useEditor.getState().project!)[0].startMs).toBe(2000);
+    store.redo(); expect(visualClips(useEditor.getState().project!).find(c => c.id === p.backgrounds[0].id)?.startMs).toBe(2000);
     expect(() => changeProject(p, d => {d.backgrounds[0].opacity = 1.01;})).toThrow();
     expect(() => changeProject(p, d => {d.backgrounds[0].layer = -.5;})).toThrow();
   });

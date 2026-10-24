@@ -1,0 +1,17 @@
+# Interactive canvas
+
+Select an object on the canvas, then drag it or use its corner/edge handles. The rotation handle sits below the selection. Ctrl/Cmd-click toggles objects; the timeline also selects overlapping or hidden objects. Arrow keys nudge a focused canvas selection by one project pixel; Shift nudges by ten pixels. Shift constrains rotation to 45-degree increments and constrains resize proportions. Escape or pointer cancellation discards an active gesture.
+
+Use **Canvas object** for pixel coordinates, dimensions, rotation, opacity, anchors, flips and media fit. A gesture creates one undo action and then uses normal autosave. **Reset transform** restores the existing media or lyric defaults. Locking prevents content/transform edits; unlock through the inspector. Hide removes the picture and canvas interactions while retaining explicitly enabled video audio, consistent with track visibility.
+
+**+ Text** adds an independent timed overlay. Double-click lyric or standalone text to edit it; changing lyric words uses the existing timing/provenance reconciliation and never changes pasted lyrics automatically. Text resizing changes its wrapping box rather than font size. Standalone text has its own typography, color, alignment, outline, shadow and optional background. Existing lyric styling and karaoke timing remain in the lyric inspector.
+
+**Bring forward / Send backward** moves the chosen object to a separate neighboring track. Duplicating uses existing clipboard logic, stable source references and new occurrence IDs. Text overlays may overlap on visual tracks; the two-media crossfade rule still applies to media clips. Transitions must be removed before moving a partner to another track.
+
+Canvas zoom changes only the editor view. Fit respects the available preview panel width and height. The project coordinate system uses pixels and an unrotated top-left (x/y), with width/height defining the layout box; rotation and scale act around normalized anchorX/anchorY. Scale defaults to one and is separate from the layout dimensions. A resolution change multiplies x/width by the horizontal ratio and y/height by the vertical ratio. Typography stays in project pixels.
+
+Schema V4 stores canvas transforms, standalone text and object visibility/lock data. V1–V3 open in memory without rewriting their files. The first save preserves the original version's bytes in project.json.vN.bak. Older V3 writers reject V4 main documents. Clips without an explicit transform retain the previous rendering path, preserving old full-screen visuals and lyric placements.
+
+The Remotion Player and export use the same TimelineVideo/ObjectRenderer placement. Selection proxies, handles, guides and zoom are editor-only. Static canvas editing never writes keyframes. Existing animation curves continue to render; controls describe the static layout box, while existing effect/animation motion may extend beyond it. Standalone-text keyframe controls are deferred.
+
+Verification: npm run test:canvas exercises isolated local storage, React 19 Moveable gestures, mixed text/lyric group transforms, numeric editing, zoom, history, lock/hide, actual PNG/GIF/MP4 imports, save/reopen, portrait/landscape Player/renderStill comparisons and decoded MP4 placement. Evidence is written under artifacts/canvas/. Unit tests cover schema/migration, locks, remapping, text/crossfade constraints, history and lyric timing preservation. Run npm test -- --testTimeout=30000 when font validation requires a slower browser launch.

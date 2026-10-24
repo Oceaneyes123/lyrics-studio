@@ -37,8 +37,6 @@ try {
   }
   const source = page.locator('.asset').filter({hasText: 'red.png'});
   const lane = page.locator('[data-video-layer="0"]');
-  await page.evaluate(() => {for (const name of ['dragstart', 'drop', 'dragend']) document.addEventListener(name, event => console.log('Background drag', name, (event.target as HTMLElement).className), true);});
-  page.on('console', message => {if (message.text().startsWith('Background drag')) console.log(message.text());});
   await source.dragTo(lane, {targetPosition: {x: 72, y: 20}});
   await mkdir('artifacts/advanced', {recursive: true}); await page.screenshot({path: 'artifacts/advanced/background-drop.png', fullPage: true});
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('2');
@@ -49,6 +47,7 @@ try {
   await page.getByRole('button', {name: 'Redo', exact: true}).click();
   await expect(lane.locator('.timeline-clip')).toHaveCount(1);
   await page.getByRole('button', {name: 'Delete clip', exact: true}).click();
+  await expect(lane.locator('.timeline-clip')).toHaveCount(0);
   const animated = page.locator('.asset').filter({hasText: 'animated.gif'});
   await animated.dragTo(lane, {targetPosition: {x: 36, y: 20}});
   await expect(page.getByLabel('Clip start (s)', {exact: true})).toHaveValue('1');
@@ -93,7 +92,7 @@ try {
   await seek(1.7);
   const screenshot = 'artifacts/advanced/layers.png';
   async function previewPixel() {
-    await page.locator('[data-proof-canvas]').screenshot({path: screenshot});
+    await page.locator('[data-proof-canvas]').screenshot({path: screenshot, style: '.canvas-overlay,.moveable-control-box{visibility:hidden!important}'});
     return Array.from(ffmpeg(['-i', screenshot, '-vf', 'crop=2:2:4:4', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']).subarray(0, 3));
   }
   const closeColor = (pixel: number[], expected: number[]) => expected.every((value, i) => Math.abs(pixel[i] - value) < 15);

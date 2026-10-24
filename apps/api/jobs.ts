@@ -3,7 +3,7 @@ import {mkdir, readFile, readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {atomicJson, HttpError} from './storage';
 
-export type Job = {id: string; projectId: string; revision: number; kind: 'alignment' | 'export';
+export type Job = {id: string; projectId: string; revision: number; kind: 'alignment' | 'export' | 'audio-processing';
   state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
   stage: string; progress: number | null; error?: string; createdAt: string; result?: unknown};
 export class Jobs {

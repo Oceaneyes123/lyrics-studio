@@ -1,6 +1,6 @@
 # Lyrics Studio
 
-Local lyric-video editor: upload a song, paste lyrics, align/correct timing, add backgrounds, and export MP4. Media and projects stay on this computer. Core editor features are implemented; automatic singing-alignment quality still needs human review. See [editor usage and evidence](docs/editor-implementation.md), [roadmap](docs/IMPLEMENTATION_PLAN.md), and [earlier proof results](docs/technical-proof.md).
+Local lyric-video editor: upload a song, paste lyrics, align/correct timing, layer media, mix audio, animate lyrics, and export MP4. Media and projects stay on this computer. Automatic singing alignment needs human review. See [advanced controls and verification](docs/advanced-editor.md), [original MVP evidence](docs/editor-implementation.md), and [advanced roadmap](docs/ADVANCED_IMPLEMENTATION_PLAN.md).
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ npm run dev
 
 Open [Lyrics Studio](http://127.0.0.1:5173/). The command starts frontend 5173 and local API 3001; Ctrl+C stops both. Create a project, upload WAV/MP3, paste lyrics, and choose Align to song. Review/apply matches, correct line and word timing in the inspector, add image/video backgrounds, and export MP4. The music/ folder is only a test fixture.
 
-The editor supports waveform/timeline move, trim, split, delete, snapping, zoom, undo/redo, project/per-line styling, crop/scale/position, fades/crossfades, and portrait/landscape 720p/1080p. Save and autosave retain local project JSON/media under storage/projects/. Reopen projects from the header. Repair restores missing media from the identical original without changing clip references.
+The editor supports unified tracks, grouped multi-selection, clipboard/ripple editing, simultaneous audio mixing, waveform word handles, loop/speed/tap synchronization, keyframes, imported fonts, copied templates, transitions, filters/masks/background blur, and optional ducking/normalization. Preview and export share rendering and processed audio. Save/autosave retain schema-3 projects under storage/projects/; older versions migrate on read and keep permanent version-specific backups on first save. Reopen projects from the header; repair requires identical originals.
 
 See [detailed controls, recovery, limits, and verification](docs/editor-implementation.md). Automatic timing remains review-required; unmatched lines are never given invented times. Alignment currently requires the original untrimmed song, and only English quality has been exercised. No public deployment is configured.
 
@@ -91,7 +91,7 @@ npm run proof:verify
 npm run proof:render -- alignment
 ```
 
-Rendering downloads Remotion's Chrome Headless Shell on first use (~120 MB). It produces `artifacts/marker.mp4` (10 seconds) or `artifacts/alignment.mp4` (first 20 seconds). These are evaluation samples. The verifier checks marker H.264/AAC output, audio pulse offsets, Player/renderStill pixel parity, and encoded-frame lyric visibility. It creates screenshots and `artifacts/verification.json` and closes its browser/server afterward. It does not perform listening approval or singing-accuracy measurement.
+Font validation and rendering use Remotion's Chrome Headless Shell; first use may download it (~120 MB). Proof rendering produces `artifacts/marker.mp4` (10 seconds) or `artifacts/alignment.mp4` (first 20 seconds). These are evaluation samples. The verifier checks marker H.264/AAC output, audio pulse offsets, Player/renderStill pixel parity, and encoded-frame lyric visibility. It creates screenshots and `artifacts/verification.json` and closes its browser/server afterward. It does not perform listening approval or singing-accuracy measurement.
 
 Generated media, caches, model-independent transcription, and artifacts are ignored by Git. Do not place private media in the proof public directory while serving it to anyone else; this development-only harness is not the M1 protected media API.
 
